@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #F9FAFB;
+  --color-surface: #FFFFFF;
+  --color-primary: #111827;
+  --color-secondary: #4B5563;
+  
+  --color-accent: #0F766E;
+  --color-accent-hover: #0C5F58;
+  --color-accent-soft: #F0FDFA;
+  
+  --color-border: #E5E7EB;
+  
+  --color-status-completed-bg: #ECFDF5;
+  --color-status-completed-text: #047857;
+  --color-status-pending-bg: #F3F4F6;
+  --color-status-pending-text: #6B7280;
+  
+  --font-sans: 'Inter', sans-serif;
+  --radius-card: 8px;
+  --radius-btn: 8px;
+}
+
+body {
+  background-color: #F9FAFB;
+  color: #111827;
+  font-family: 'Inter', sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+/* Custom scrollbar matching strict color scheme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F9FAFB;
+}
+::-webkit-scrollbar-thumb {
+  background: #E5E7EB;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4B5563;
+}
+
+/* Medical-grade professional aesthetic overrides */
+.btn {
+  @apply inline-flex items-center justify-center font-semibold transition-all duration-200 border border-transparent disabled:opacity-50 disabled:cursor-not-allowed select-none;
+  border-radius: 8px;
+}
+
+.card {
+  @apply bg-surface border border-border shadow-sm;
+  border-radius: 8px;
+}
+
+/* Hide scrollbar utility */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

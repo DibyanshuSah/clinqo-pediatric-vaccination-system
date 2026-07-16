@@ -1,0 +1,147 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  name      String
+  role      String   @default("doctor")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sessions  Session[]
+
+  @@map("users")
+}
+
+model Clinic {
+  id        Int       @id @default(autoincrement())
+  name      String
+  address   String
+  phone     String
+  email     String?
+  city      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  patients  Patient[]
+
+  @@map("clinics")
+}
+
+model Patient {
+  id            Int            @id @default(autoincrement())
+  uhid          String         @unique
+  namePrefix    String         @default("")
+  name          String
+  dateOfBirth   DateTime
+  gender        String
+  parentName    String
+  motherName    String
+  mobile        String
+  email         String?
+  address       String
+  birthWeight   Float
+  currentWeight Float
+  bloodGroup    String?
+  photoUrl      String?
+  clinicId      Int
+  clinic        Clinic         @relation(fields: [clinicId], references: [id])
+  visitType     String         @default("Normal OPD visit")
+  nicuDetails   String?
+  uuid          String?        @unique
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  vaccinations  Vaccination[]
+  growthRecords GrowthRecord[]
+  reminders     Reminder[]
+  sessions      Session[]
+
+  @@map("patients")
+}
+
+model VaccineMaster {
+  id                 Int           @id @default(autoincrement())
+  vaccineName        String
+  ageLabel           String
+  category           String        // "mandatory" or "optional"
+  recommendedAgeDays Int
+  displayOrder       Int
+  vaccinations       Vaccination[]
+
+  @@map("vaccine_master")
+}
+
+model Vaccination {
+  id              Int           @id @default(autoincrement())
+  patientId       Int
+  patient         Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  vaccineMasterId Int
+  vaccineMaster   VaccineMaster @relation(fields: [vaccineMasterId], references: [id], onDelete: Cascade)
+  category        String
+  status          String        @default("not_given") // "given" or "not_given"
+  dueDate         DateTime
+  dateGiven       DateTime?
+  brand           String?
+  batchNumber     String?
+  notes           String?
+  autoCompleted   Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@map("vaccinations")
+}
+
+model GrowthRecord {
+  id                Int      @id @default(autoincrement())
+  patientId         Int
+  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recordDate        DateTime
+  weight            Float
+  height            Float?
+  headCircumference Float?
+  bmi               Float?
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  @@map("growth_records")
+}
+
+model Reminder {
+  id            Int          @id @default(autoincrement())
+  patientId     Int
+  patient       Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  vaccinationId Int?
+  type          String       // "7_days_before", "3_days_before", "due_today", "upcoming"
+  channel       String       @default("whatsapp")
+  status        String       @default("scheduled") // "scheduled", "sent", "failed", "cancelled", "processing"
+  scheduledAt   DateTime
+  sentAt        DateTime?
+  message       String
+  createdAt     DateTime     @default(now())
+  retryCount    Int          @default(0)
+  lastError     String?
+  templateName  String?
+  templateParams Json?
+
+  @@map("reminders")
+}
+
+model Session {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  role      String   // "doctor" or "parent"
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  patientId Int?
+  patient   Patient? @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@map("sessions")
+}
