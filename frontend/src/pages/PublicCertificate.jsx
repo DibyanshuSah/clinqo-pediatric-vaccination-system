@@ -318,6 +318,9 @@ const PublicCertificate = () => {
 
     if (uuid) {
       fetchPublicData();
+    } else {
+      setError(true);
+      setLoading(false);
     }
   }, [uuid]);
 
