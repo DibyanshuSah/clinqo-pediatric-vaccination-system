@@ -296,8 +296,8 @@ const PublicCertificate = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  // Hardcode base API url
-  const API_URL = 'http://localhost:5000/api';
+  // Base API URL
+  const API_URL = import.meta.env.VITE_API_URL || (window.location.origin.includes('localhost') ? 'http://localhost:5000/api' : `${window.location.origin}/api`);
 
   useEffect(() => {
     const fetchPublicData = async () => {
