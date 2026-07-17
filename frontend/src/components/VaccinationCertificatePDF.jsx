@@ -499,7 +499,7 @@ export const VaccinationCertificatePDF = ({ patient, vaccinations }) => {
           </View>
           <View style={styles.detailItemFull}>
             <Text style={styles.detailLabel}>Vaccinated By: </Text>
-            <Text style={[styles.detailValueBlue, { marginLeft: 4 }]}>Dr. Shubha Smruti Mohanty</Text>
+            <Text style={[styles.detailValueBlue, { marginLeft: 4 }]}>Dr. Shubha Sandeep Mahanty</Text>
           </View>
         </View>
 
@@ -520,7 +520,7 @@ export const VaccinationCertificatePDF = ({ patient, vaccinations }) => {
 
           {/* Doctor Signature */}
           <View style={styles.doctorBlock}>
-            <Text style={styles.doctorName}>Dr. Shubha Smruti Mohanty</Text>
+            <Text style={styles.doctorName}>Dr. Shubha Sandeep Mahanty</Text>
             <Text style={styles.doctorDegree}>MBBS, MD (Paediatrics)</Text>
             <Text style={styles.doctorTitle}>Consultant Pediatrician & Neonatologist</Text>
             

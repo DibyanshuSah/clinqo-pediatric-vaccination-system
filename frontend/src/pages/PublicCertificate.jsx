@@ -240,7 +240,7 @@ const VaccinationCertificate = ({ patient, vaccinations, onVaccineClick }) => {
 
         <div className="flex justify-between col-span-2 pt-0.5">
           <span className="font-bold" style={{ color: '#6b7280' }}>Vaccinated By:</span>
-          <span className="font-bold" style={{ color: '#1e3a8a' }}>Dr. Shubha Smruti Mohanty</span>
+          <span className="font-bold" style={{ color: '#1e3a8a' }}>Dr. Shubha Sandeep Mahanty</span>
         </div>
       </div>
 
@@ -270,7 +270,7 @@ const VaccinationCertificate = ({ patient, vaccinations, onVaccineClick }) => {
 
         {/* Doctor Signature Block */}
         <div className="text-right space-y-0.5 max-w-[45%]" style={{ color: '#374151' }}>
-          <p className="font-extrabold text-[12px] leading-tight" style={{ color: '#0f766e' }}>Dr. Shubha Smruti Mohanty</p>
+          <p className="font-extrabold text-[12px] leading-tight" style={{ color: '#0f766e' }}>Dr. Shubha Sandeep Mahanty</p>
           <p className="font-bold text-[10px] leading-none" style={{ color: '#1f2937' }}>MBBS, MD (Paediatrics)</p>
           <p className="font-semibold text-[9px] leading-tight" style={{ color: '#6b7280' }}>Consultant Pediatrician & Neonatologist</p>
           
