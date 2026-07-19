@@ -104,6 +104,7 @@ const getPatient = async (req, res) => {
     return res.json({
       id: patient.id,
       uhid: patient.uhid,
+      uuid: patient.uuid,
       namePrefix: patient.namePrefix,
       name: patient.name,
       dateOfBirth: patient.dateOfBirth.toISOString().split('T')[0],
