@@ -89,7 +89,7 @@ const Login = () => {
       </div>
 
       {/* Footer Info */}
-      <p className="text-xs font-semibold text-secondary mt-6">KIDDOSCARE v1.0 • Secure Pediatric Network</p>
+      <p className="text-xs font-semibold text-secondary mt-6">KIDDOSCARE v2.0 • Secure Pediatric Network</p>
     </div>
   );
 };

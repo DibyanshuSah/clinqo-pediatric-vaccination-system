@@ -13,6 +13,7 @@ Font.register({
 });
 import { VaccinationCertificatePDF } from '../components/VaccinationCertificatePDF';
 import { getVaccList } from '../utils/vaccineDefaults';
+import { calculateAgeYMD, calculatePediatricAgeShort } from '../utils/ageCalculator';
 import uwinLogo from '../assets/uwin-logo.png';
 import govtLogo from '../assets/govt-logo.png';
 import nhmLogo from '../assets/nhm-logo.png';
@@ -119,7 +120,7 @@ const INVESTIGATION_TEMPLATES = {
     { name: "GGT (Gamma-Glutamyl Transferase)", unit: "U/L", type: "number" },
     { name: "Magnesium", unit: "mg/dL", type: "number" }
   ],
-  "Cardiac & Inflammatory Profile (CRP)": [
+  "C-Reactive Protein": [
     { name: "C-Reactive Protein (CRP), Serum (Quantitative)", unit: "mg/L", type: "number" }
   ],
   "Iron Profile": [
@@ -1023,9 +1024,727 @@ const NicuPanel = ({ patient, onUpdate, API_URL }) => {
   );
 };
 
+const PicuPanel = ({ patient, onUpdate, API_URL }) => {
+  const { user } = useAuth();
+  const [isEditing, setIsEditing] = useState(false);
+  
+  const initialParsed = parseNicuDetails(patient.nicuDetails);
+  
+  const details = {
+    ...initialParsed.raw,
+    activeInvestigations: initialParsed.active,
+    investigationData: initialParsed.invData,
+    bloodGroup: (initialParsed.invData["Blood Grouping"] || {})["Blood Group"] || initialParsed.raw.bloodGroup || ''
+  };
+
+  const calculatedAge = calculatePediatricAgeShort(patient?.dateOfBirth);
+
+  const [fields, setFields] = useState({
+    babyIpNo: details.babyIpNo || '',
+    consultant: details.consultant || 'DR SHUBHA MAHANTY',
+    timeOfBirth: (details.timeOfBirth || '').replace(/-/g, ':'),
+    admissionType: details.admissionType || 'Emergency',
+    motherHighRisk: details.motherHighRisk || 'NO',
+    
+    pediatricAge: details.pediatricAge || calculatedAge || '',
+    gcsScore: details.gcsScore || '',
+    prismScore: details.prismScore || '',
+    respiratorySupport: details.respiratorySupport || 'None',
+    ventilatorDays: details.ventilatorDays || '',
+    picuStayDays: details.picuStayDays || details.incubatorDays || '',
+    phototherapyDays: details.phototherapyDays || '',
+    feedingType: details.feedingType || 'Oral feed',
+    complications: details.complications || '',
+    picuNotes: details.picuNotes || details.nicuNotes || '',
+    
+    chiefComplaints: details.chiefComplaints || '',
+    conditionOnAdmission: details.conditionOnAdmission || '',
+    hospitalCourse: details.hospitalCourse || '',
+    treatmentGiven: details.treatmentGiven || ''
+  });
+
+  const [activeInvestigations, setActiveInvestigations] = useState(initialParsed.active);
+  const [investigationData, setInvestigationData] = useState(initialParsed.invData);
+  const [expandedSections, setExpandedSections] = useState(initialParsed.active);
+  const [selectedInvestigationToAdd, setSelectedInvestigationToAdd] = useState('');
+  const [expandedViewSections, setExpandedViewSections] = useState([]);
+
+  useEffect(() => {
+    const parsed = parseNicuDetails(patient.nicuDetails);
+    const autoAge = calculatePediatricAgeShort(patient?.dateOfBirth);
+    setFields({
+      babyIpNo: parsed.raw.babyIpNo || '',
+      consultant: parsed.raw.consultant || 'DR SHUBHA MAHANTY',
+      timeOfBirth: (parsed.raw.timeOfBirth || '').replace(/-/g, ':'),
+      admissionType: parsed.raw.admissionType || 'Emergency',
+      motherHighRisk: parsed.raw.motherHighRisk || 'NO',
+      
+      pediatricAge: parsed.raw.pediatricAge || autoAge || '',
+      gcsScore: parsed.raw.gcsScore || '',
+      prismScore: parsed.raw.prismScore || '',
+      respiratorySupport: parsed.raw.respiratorySupport || 'None',
+      ventilatorDays: parsed.raw.ventilatorDays || '',
+      picuStayDays: parsed.raw.picuStayDays || parsed.raw.incubatorDays || '',
+      phototherapyDays: parsed.raw.phototherapyDays || '',
+      feedingType: parsed.raw.feedingType || 'Oral feed',
+      complications: parsed.raw.complications || '',
+      picuNotes: parsed.raw.picuNotes || parsed.raw.nicuNotes || '',
+      
+      chiefComplaints: parsed.raw.chiefComplaints || '',
+      conditionOnAdmission: parsed.raw.conditionOnAdmission || '',
+      hospitalCourse: parsed.raw.hospitalCourse || '',
+      treatmentGiven: parsed.raw.treatmentGiven || ''
+    });
+    setActiveInvestigations(parsed.active);
+    setInvestigationData(parsed.invData);
+    setExpandedSections(parsed.active);
+    setExpandedViewSections([]);
+  }, [patient]);
+
+  const handleInvestigationFieldChange = (category, fieldName, value) => {
+    setInvestigationData(prev => {
+      const categoryData = { ...prev[category], [fieldName]: value };
+      
+      if (category === "Blood Grouping") {
+        if (fieldName === "ABO Blood Group" || fieldName === "Rh Factor") {
+          const abo = fieldName === "ABO Blood Group" ? value : (categoryData["ABO Blood Group"] || '');
+          const rh = fieldName === "Rh Factor" ? value : (categoryData["Rh Factor"] || '');
+          categoryData["Blood Group"] = getAutoBloodGroup(abo, rh);
+        }
+      }
+      
+      return {
+        ...prev,
+        [category]: categoryData
+      };
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      for (const category of activeInvestigations) {
+        const data = investigationData[category] || {};
+        if (!data.investigationDate || !data.investigationTime) {
+          toast.error(`Please fill both Date and Time of Investigation for "${category}" before saving.`);
+          return;
+        }
+      }
+
+      const bloodGroupData = investigationData["Blood Grouping"] || {};
+      const computedBloodGroup = bloodGroupData["Blood Group"] || '';
+
+      const payload = {
+        ...fields,
+        activeInvestigations,
+        investigationData,
+        aboBloodGroup: bloodGroupData["ABO Blood Group"] || '',
+        rhFactor: bloodGroupData["Rh Factor"] === 'Positive' ? '+' : (bloodGroupData["Rh Factor"] === 'Negative' ? '-' : (bloodGroupData["Rh Factor"] || '')),
+        bacteria: (investigationData["Urine Routine & Microscopy"] || {})["Bacteria"] || '',
+        yeastCells: (investigationData["Urine Routine & Microscopy"] || {})["Yeast Cells"] || '',
+        bloodGroup: computedBloodGroup
+      };
+
+      await axios.patch(`${API_URL}/patients/${patient.id}`, {
+        nicuDetails: JSON.stringify(payload),
+        bloodGroup: computedBloodGroup || undefined
+      });
+      toast.success('PICU clinical details updated successfully!');
+      setIsEditing(false);
+      onUpdate();
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update PICU details');
+    }
+  };
+
+  return (
+    <div className="bg-surface border border-border rounded-lg shadow-sm p-6 space-y-6">
+      <div className="flex justify-between items-center border-b border-border pb-3">
+        <div>
+          <h3 className="text-sm font-bold text-accent uppercase tracking-wider">
+            Pediatric Intensive Care Unit (PICU) Record
+          </h3>
+          <p className="text-xs text-secondary mt-0.5">Clinical metrics and progress details for pediatric patients requiring intensive care</p>
+        </div>
+        {user?.role === 'doctor' && !isEditing && (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="h-9 px-3 bg-accent hover:bg-accent-hover text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
+          >
+            <Edit2 className="w-4 h-4" /> Edit Record
+          </button>
+        )}
+      </div>
+
+      {isEditing ? (
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Section 1: Administrative & Admission Details */}
+          <div className="space-y-4">
+            <h4 className="text-xs font-bold text-accent uppercase tracking-wider border-b border-border/60 pb-1.5">
+              Admission & Administrative Details
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">Child / Admission IP No.</label>
+                <input
+                  type="text"
+                  placeholder="e.g. PICU-45678"
+                  value={fields.babyIpNo}
+                  onChange={(e) => setFields(p => ({ ...p, babyIpNo: e.target.value }))}
+                  className="h-10 border border-border rounded px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">Consultant</label>
+                <input
+                  type="text"
+                  placeholder="e.g. DR SHUBHA MAHANTY"
+                  value={fields.consultant}
+                  onChange={(e) => setFields(p => ({ ...p, consultant: e.target.value }))}
+                  className="h-10 border border-border rounded px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">Time of Admission</label>
+                <input
+                  type="time"
+                  step="1"
+                  value={fields.timeOfBirth}
+                  onChange={(e) => setFields(p => ({ ...p, timeOfBirth: e.target.value }))}
+                  className="h-10 border border-border rounded px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">Admission Type</label>
+                <select
+                  value={fields.admissionType}
+                  onChange={(e) => setFields(p => ({ ...p, admissionType: e.target.value }))}
+                  className="h-10 border border-border rounded px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent"
+                >
+                  <option value="Emergency">Emergency</option>
+                  <option value="Post-Operative">Post-Operative</option>
+                  <option value="Direct Referral">Direct Referral</option>
+                  <option value="Ward Transfer">Ward Transfer</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">High Risk / Comorbidities</label>
+                <select
+                  value={fields.motherHighRisk}
+                  onChange={(e) => setFields(p => ({ ...p, motherHighRisk: e.target.value }))}
+                  className="h-10 border border-border rounded px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent"
+                >
+                  <option value="NO">NO</option>
+                  <option value="YES">YES</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: PICU Clinical Metrics */}
+          <div className="space-y-4">
+            <h4 className="text-xs font-bold text-accent uppercase tracking-wider border-b border-border/60 pb-1.5">
+              PICU Care & Clinical Metrics
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">Pediatric Age / Stage (Auto Calculated)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 2 yrs 1 mt"
+                  value={fields.pediatricAge || calculatePediatricAgeShort(patient?.dateOfBirth)}
+                  onChange={(e) => setFields(p => ({ ...p, pediatricAge: e.target.value }))}
+                  className="h-10 border border-border rounded px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent font-semibold"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">GCS Score (Glasgow Coma Scale)</label>
+                <input
+                  type="number"
+                  min="3"
+                  max="15"
+                  placeholder="3 - 15"
+                  value={fields.gcsScore}
+                  onChange={(e) => setFields(p => ({ ...p, gcsScore: e.target.value }))}
+                  className="h-10 border border-border rounded px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">Respiratory Support</label>
+                <select
+                  value={fields.respiratorySupport}
+                  onChange={(e) => setFields(p => ({ ...p, respiratorySupport: e.target.value }))}
+                  className="h-10 border border-border rounded px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent"
+                >
+                  <option value="None">None</option>
+                  <option value="O2 Mask / Nasal Cannula">O2 Mask / Nasal Cannula</option>
+                  <option value="HFNC (High Flow Nasal Cannula)">HFNC (High Flow Nasal Cannula)</option>
+                  <option value="CPAP">CPAP</option>
+                  <option value="BiPAP">BiPAP</option>
+                  <option value="Mechanical Ventilation">Mechanical Ventilation</option>
+                  <option value="Tracheostomy">Tracheostomy</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">Ventilator Stay (Days)</label>
+                <input
+                  type="number"
+                  placeholder="Number of days"
+                  value={fields.ventilatorDays}
+                  onChange={(e) => setFields(p => ({ ...p, ventilatorDays: e.target.value }))}
+                  className="h-10 border border-border rounded px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">PICU Stay (Days)</label>
+                <input
+                  type="number"
+                  placeholder="Number of days"
+                  value={fields.picuStayDays}
+                  onChange={(e) => setFields(p => ({ ...p, picuStayDays: e.target.value }))}
+                  className="h-10 border border-border rounded px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">Feeding Status</label>
+                <select
+                  value={fields.feedingType}
+                  onChange={(e) => setFields(p => ({ ...p, feedingType: e.target.value }))}
+                  className="h-10 border border-border rounded px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent"
+                >
+                  <option value="Oral feed">Oral feed</option>
+                  <option value="TPN (Total Parenteral Nutrition)">TPN (Total Parenteral Nutrition)</option>
+                  <option value="Gavage / NG Tube feed">Gavage / NG Tube feed</option>
+                  <option value="NJ Tube feed">NJ Tube feed</option>
+                  <option value="NPO (Nil Per Os)">NPO (Nil Per Os)</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5 md:col-span-3">
+                <label className="text-[10px] font-bold text-secondary uppercase">Primary Diagnosis / PICU Complications</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Septic Shock, Status Epilepticus, Severe Pneumonia, ARDS"
+                  value={fields.complications}
+                  onChange={(e) => setFields(p => ({ ...p, complications: e.target.value }))}
+                  className="h-10 border border-border rounded px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Narrative Texts */}
+          <div className="space-y-4">
+            <h4 className="text-xs font-bold text-accent uppercase tracking-wider border-b border-border/60 pb-1.5">
+              Clinical Narratives & Hospital Course
+            </h4>
+            <div className="space-y-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">Chief Complaints</label>
+                <textarea
+                  rows="2"
+                  placeholder="Enter chief complaints..."
+                  value={fields.chiefComplaints}
+                  onChange={(e) => setFields(p => ({ ...p, chiefComplaints: e.target.value }))}
+                  className="border border-border rounded p-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent resize-none"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">Condition During Admission</label>
+                <textarea
+                  rows="2"
+                  placeholder="Enter condition during admission..."
+                  value={fields.conditionOnAdmission}
+                  onChange={(e) => setFields(p => ({ ...p, conditionOnAdmission: e.target.value }))}
+                  className="border border-border rounded p-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent resize-none"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-secondary uppercase">Course During Hospitalization & Interventions</label>
+                <textarea
+                  rows="2"
+                  placeholder="Enter medical course and interventions during hospitalization..."
+                  value={fields.hospitalCourse}
+                  onChange={(e) => setFields(p => ({ ...p, hospitalCourse: e.target.value }))}
+                  className="border border-border rounded p-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent resize-none"
+                />
+              </div>
+
+              {/* Dynamic Investigation Section */}
+              <div className="border border-border rounded-xl p-4 bg-bg/10 space-y-4">
+                <div className="flex justify-between items-center border-b border-border/40 pb-2">
+                  <span className="text-[10px] font-bold text-accent uppercase tracking-wider">Investigations Setup</span>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex-1 flex flex-col gap-1">
+                    <label className="text-[9px] font-bold text-secondary uppercase">Select Investigation</label>
+                    <select
+                      value={selectedInvestigationToAdd}
+                      onChange={(e) => setSelectedInvestigationToAdd(e.target.value)}
+                      className="h-10 border border-border rounded-lg px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent w-full"
+                    >
+                      <option value="">-- Choose an Investigation --</option>
+                      {Object.keys(INVESTIGATION_TEMPLATES).map((name) => {
+                        const isAdded = activeInvestigations.includes(name);
+                        return (
+                          <option key={name} value={name}>
+                            {name} {isAdded ? ' (Added)' : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      disabled={!selectedInvestigationToAdd}
+                      onClick={() => {
+                        if (selectedInvestigationToAdd) {
+                          if (activeInvestigations.includes(selectedInvestigationToAdd)) {
+                            if (!expandedSections.includes(selectedInvestigationToAdd)) {
+                              setExpandedSections(prev => [...prev, selectedInvestigationToAdd]);
+                            }
+                            toast.info(`${selectedInvestigationToAdd} is already added and now expanded.`);
+                          } else {
+                            setActiveInvestigations(prev => [...prev, selectedInvestigationToAdd]);
+                            setExpandedSections(prev => [...prev, selectedInvestigationToAdd]);
+                            toast.success(`Added ${selectedInvestigationToAdd}`);
+                          }
+                          setSelectedInvestigationToAdd('');
+                        }
+                      }}
+                      className={`h-10 px-4 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all w-full sm:w-auto ${
+                        !selectedInvestigationToAdd
+                          ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                          : activeInvestigations.includes(selectedInvestigationToAdd)
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed font-medium'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm active:scale-95'
+                      }`}
+                    >
+                      {selectedInvestigationToAdd && activeInvestigations.includes(selectedInvestigationToAdd) ? (
+                        <span className="flex items-center gap-1 font-bold">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Added ✓
+                        </span>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4" /> Add
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* List of active investigations in edit mode */}
+                {activeInvestigations.length === 0 ? (
+                  <p className="text-xs text-secondary/70 italic text-center py-2">No investigations added yet. Select one above and click Add.</p>
+                ) : (
+                  <div className="space-y-3 mt-3">
+                    {activeInvestigations.map((category) => {
+                      const isExpanded = expandedSections.includes(category);
+                      const fieldsList = INVESTIGATION_TEMPLATES[category] || [];
+                      const data = investigationData[category] || {};
+                      
+                      return (
+                        <div key={category} className="border border-border/70 rounded-lg overflow-hidden bg-surface transition-all duration-200">
+                          <div 
+                            className="flex justify-between items-center px-4 py-2.5 bg-bg/25 hover:bg-bg/40 cursor-pointer select-none border-b border-border/30"
+                            onClick={() => {
+                              setExpandedSections(prev => 
+                                isExpanded ? prev.filter(c => c !== category) : [...prev, category]
+                              );
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`transform transition-transform text-secondary text-[10px] ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                              <span className="text-xs font-bold text-primary uppercase">{category}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Are you sure you want to remove the ${category} section? All entered data for this test will be lost.`)) {
+                                  setActiveInvestigations(prev => prev.filter(c => c !== category));
+                                  setExpandedSections(prev => prev.filter(c => c !== category));
+                                  setInvestigationData(prev => {
+                                    const updated = { ...prev };
+                                    delete updated[category];
+                                    return updated;
+                                  });
+                                  toast.info(`Removed ${category}`);
+                                }
+                              }}
+                              className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1 rounded transition-colors"
+                              title={`Remove ${category}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {isExpanded && (
+                            <div className="p-4 bg-surface space-y-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-3 border-b border-border/40">
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[10px] font-bold text-accent uppercase flex items-center gap-1">
+                                    <span>Date of Investigation</span>
+                                    <span className="text-rose-500">*</span>
+                                  </label>
+                                  <input
+                                    type="date"
+                                    required
+                                    value={data.investigationDate || ''}
+                                    onChange={(e) => handleInvestigationFieldChange(category, "investigationDate", e.target.value)}
+                                    className="h-10 border border-border rounded-lg px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent w-full"
+                                  />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[10px] font-bold text-accent uppercase flex items-center gap-1">
+                                    <span>Time of Investigation</span>
+                                    <span className="text-rose-500">*</span>
+                                  </label>
+                                  <input
+                                    type="time"
+                                    required
+                                    value={data.investigationTime || ''}
+                                    onChange={(e) => handleInvestigationFieldChange(category, "investigationTime", e.target.value)}
+                                    className="h-10 border border-border rounded-lg px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent w-full"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                {fieldsList.map((f) => {
+                                  const value = data[f.name] || '';
+                                  const isDisabled = !data.investigationDate || !data.investigationTime;
+                                  
+                                  return (
+                                    <div key={f.name} className="flex flex-col gap-1">
+                                      <label className="text-[10px] font-bold text-secondary uppercase flex justify-between">
+                                        <span>{f.name}</span>
+                                        {f.unit && <span className="text-secondary/70 lowercase font-medium">({f.unit})</span>}
+                                      </label>
+                                      {f.type === "select" ? (
+                                        <select
+                                          disabled={isDisabled}
+                                          value={value}
+                                          onChange={(e) => handleInvestigationFieldChange(category, f.name, e.target.value)}
+                                          className={`h-10 border border-border rounded-lg px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent w-full ${isDisabled ? 'opacity-50 cursor-not-allowed bg-bg' : ''}`}
+                                        >
+                                          {f.options.map(opt => (
+                                            <option key={opt} value={opt}>{opt || 'Select...'}</option>
+                                          ))}
+                                        </select>
+                                      ) : f.type === "auto" ? (
+                                        <input
+                                          type="text"
+                                          readOnly
+                                          disabled
+                                          value={value || '--'}
+                                          className="h-10 border border-border rounded-lg px-3 text-sm text-secondary bg-bg focus:outline-none font-bold w-full"
+                                        />
+                                      ) : (
+                                        <input
+                                          type={f.type}
+                                          disabled={isDisabled}
+                                          placeholder={isDisabled ? "Fill Date & Time first" : (f.unit ? `Value (${f.unit})` : `Value`)}
+                                          value={value}
+                                          onChange={(e) => handleInvestigationFieldChange(category, f.name, e.target.value)}
+                                          className={`h-10 border border-border rounded-lg px-3 text-sm text-primary bg-surface focus:outline-none focus:border-accent w-full ${isDisabled ? 'opacity-50 cursor-not-allowed bg-bg' : ''}`}
+                                        />
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              type="button"
+              onClick={() => setIsEditing(false)}
+              className="h-10 px-5 border border-border bg-surface hover:bg-bg text-primary text-xs font-semibold rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="h-10 px-5 bg-accent hover:bg-accent-hover text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+            >
+              Save PICU Record
+            </button>
+          </div>
+        </form>
+      ) : (
+        /* View Mode */
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-bg/40 border border-border/80 rounded-lg p-4 space-y-3">
+              <h4 className="text-xs font-bold text-accent uppercase tracking-wider border-b border-border/60 pb-2">
+                Admission & Administrative Information
+              </h4>
+              <div className="grid grid-cols-2 gap-y-2 text-xs">
+                <div>
+                  <span className="text-secondary font-medium block text-[10px] uppercase">Child IP No.</span>
+                  <span className="font-bold text-primary">{details.babyIpNo || '--'}</span>
+                </div>
+                <div>
+                  <span className="text-secondary font-medium block text-[10px] uppercase">Consultant Doctor</span>
+                  <span className="font-bold text-primary">{details.consultant || 'DR SHUBHA MAHANTY'}</span>
+                </div>
+                <div>
+                  <span className="text-secondary font-medium block text-[10px] uppercase">Time of Admission</span>
+                  <span className="font-bold text-primary">{formatTime12hr(details.timeOfBirth)}</span>
+                </div>
+                <div>
+                  <span className="text-secondary font-medium block text-[10px] uppercase">Admission Type</span>
+                  <span className="font-bold text-primary">{details.admissionType || 'Emergency'}</span>
+                </div>
+                <div>
+                  <span className="text-secondary font-medium block text-[10px] uppercase">High Risk / Comorbidities</span>
+                  <span className={`font-bold ${details.motherHighRisk === 'YES' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                    {details.motherHighRisk || 'NO'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-bg/40 border border-border/80 rounded-lg p-4 space-y-3">
+              <h4 className="text-xs font-bold text-accent uppercase tracking-wider border-b border-border/60 pb-2">
+                PICU Clinical Metrics & Support
+              </h4>
+              <div className="grid grid-cols-2 gap-y-2 text-xs">
+                <div>
+                  <span className="text-secondary font-medium block text-[10px] uppercase">Pediatric Age / Stage</span>
+                  <span className="font-bold text-primary">{details.pediatricAge || calculatePediatricAgeShort(patient?.dateOfBirth) || '--'}</span>
+                </div>
+                <div>
+                  <span className="text-secondary font-medium block text-[10px] uppercase">GCS Score</span>
+                  <span className="font-bold text-primary">{details.gcsScore ? `${details.gcsScore} / 15` : '--'}</span>
+                </div>
+                <div>
+                  <span className="text-secondary font-medium block text-[10px] uppercase">Respiratory Support</span>
+                  <span className="font-bold text-primary">{details.respiratorySupport || 'None'}</span>
+                </div>
+                <div>
+                  <span className="text-secondary font-medium block text-[10px] uppercase">Ventilator Stay</span>
+                  <span className="font-bold text-primary">{details.ventilatorDays ? `${details.ventilatorDays} days` : '--'}</span>
+                </div>
+                <div>
+                  <span className="text-secondary font-medium block text-[10px] uppercase">PICU Stay</span>
+                  <span className="font-bold text-primary">{details.picuStayDays ? `${details.picuStayDays} days` : '--'}</span>
+                </div>
+                <div>
+                  <span className="text-secondary font-medium block text-[10px] uppercase">Feeding Type</span>
+                  <span className="font-bold text-primary">{details.feedingType || 'Oral feed'}</span>
+                </div>
+                <div>
+                  <span className="text-secondary font-medium block text-[10px] uppercase">Blood Group</span>
+                  <span className="font-bold text-primary">{details.bloodGroup || '--'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Investigations Summary Cards in View Mode */}
+          {details.activeInvestigations && details.activeInvestigations.length > 0 && (
+            <div className="bg-bg/40 border border-border/80 rounded-lg p-4 space-y-3">
+              <h4 className="text-xs font-bold text-accent uppercase tracking-wider border-b border-border/60 pb-2">
+                Investigation Records ({details.activeInvestigations.length})
+              </h4>
+              <div className="space-y-3">
+                {details.activeInvestigations.map((category) => {
+                  const data = (details.investigationData || {})[category] || {};
+                  const isExpanded = expandedViewSections.includes(category);
+                  const fieldsList = INVESTIGATION_TEMPLATES[category] || [];
+                  const testDate = data.investigationDate ? dayjs(data.investigationDate).format('DD MMM YYYY') : '';
+                  const testTime = formatTime12hr(data.investigationTime || '');
+
+                  return (
+                    <div key={category} className="border border-border/60 rounded-lg bg-surface overflow-hidden">
+                      <div 
+                        className="flex justify-between items-center px-4 py-2.5 bg-bg/20 hover:bg-bg/40 cursor-pointer select-none"
+                        onClick={() => {
+                          setExpandedViewSections(prev => 
+                            isExpanded ? prev.filter(c => c !== category) : [...prev, category]
+                          );
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`transform transition-transform text-secondary text-[10px] ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                          <span className="text-xs font-bold text-primary uppercase">{category}</span>
+                        </div>
+                        <span className="text-[11px] text-secondary font-medium">
+                          {testDate ? `${testDate} at ${testTime}` : 'No date'}
+                        </span>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="p-4 border-t border-border/40 bg-surface grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 text-xs">
+                          {fieldsList.map((f) => {
+                            const val = data[f.name];
+                            return (
+                              <div key={f.name} className="bg-bg/30 p-2 rounded border border-border/30">
+                                <span className="text-[9px] font-bold text-secondary uppercase block line-clamp-1">{f.name}</span>
+                                <span className="font-bold text-primary mt-0.5 block">
+                                  {val !== undefined && val !== '' ? `${val} ${f.unit ? f.unit : ''}` : '--'}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Clinical Narratives View */}
+          <div className="bg-bg/40 border border-border/80 rounded-lg p-4 space-y-3">
+            <h4 className="text-xs font-bold text-accent uppercase tracking-wider border-b border-border/60 pb-2">
+              Clinical Narratives & Course
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div>
+                <span className="text-secondary font-bold uppercase text-[10px] block">Chief Complaints</span>
+                <p className="text-primary mt-1 whitespace-pre-wrap">{details.chiefComplaints || 'Not specified'}</p>
+              </div>
+              <div>
+                <span className="text-secondary font-bold uppercase text-[10px] block">Condition During Admission</span>
+                <p className="text-primary mt-1 whitespace-pre-wrap">{details.conditionOnAdmission || 'Not specified'}</p>
+              </div>
+              <div className="md:col-span-2">
+                <span className="text-secondary font-bold uppercase text-[10px] block">Course During Hospitalization & Interventions</span>
+                <p className="text-primary mt-1 whitespace-pre-wrap">{details.hospitalCourse || 'Not specified'}</p>
+              </div>
+              <div className="md:col-span-2">
+                <span className="text-secondary font-bold uppercase text-[10px] block">Primary Diagnosis / PICU Complications</span>
+                <p className="text-primary mt-1 whitespace-pre-wrap">{details.complications || 'No complications recorded.'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const DischargePanel = ({ patient, onUpdate, API_URL }) => {
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
+  
+  const isPicu = patient?.visitType === 'PICU';
   
   const nicuData = parseNicuDetails(patient.nicuDetails);
   const discharge = nicuData.raw.dischargeDetails || {};
@@ -1078,7 +1797,7 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
       const existingNicu = parseNicuDetails(patient.nicuDetails).raw;
       const updatedNicu = {
         ...existingNicu,
-        // Update main narratives so they stay synchronized with NICU tab
+        // Update main narratives so they stay synchronized with NICU/PICU tab
         chiefComplaints: fields.chiefComplaints,
         conditionOnAdmission: fields.conditionOnAdmission,
         hospitalCourse: fields.hospitalCourse,
@@ -1107,7 +1826,7 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
       await axios.patch(`${API_URL}/patients/${patient.id}`, {
         nicuDetails: JSON.stringify(updatedNicu)
       });
-      toast.success('Neonatal Discharge Summary updated successfully!');
+      toast.success(isPicu ? 'PICU Discharge Summary updated successfully!' : 'Neonatal Discharge Summary updated successfully!');
       setIsEditing(false);
       onUpdate();
     } catch (err) {
@@ -1157,6 +1876,120 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
         `).join('') + 
         '</ul>';
 
+    const headerTitle = isPicu ? 'PEDIATRIC INTENSIVE CARE (PICU) DISCHARGE SUMMARY' : 'NEONATAL DISCHARGE SUMMARY';
+    const departmentName = isPicu ? 'Department of Pediatrics & Pediatric Intensive Care' : 'Department of Neonatology';
+    const ipLabel = isPicu ? 'Child IP No.' : 'Baby IP No.';
+    const col2Header = isPicu ? '2. PICU DETAILS' : '2. NEONATAL DETAILS';
+
+    const col2Rows = isPicu ? `
+      <tr>
+        <td class="data-label">Date of Birth</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${formatDate(patient?.dateOfBirth)}</td>
+      </tr>
+      <tr>
+        <td class="data-label">Gender</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${patient?.gender?.toUpperCase() || '--'}</td>
+      </tr>
+      <tr>
+        <td class="data-label">Time of Admission</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${formatTime(nicuData.raw.timeOfBirth)}</td>
+      </tr>
+      <tr>
+        <td class="data-label">Weight</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${patient?.currentWeight ? patient.currentWeight + ' kg' : (patient?.birthWeight ? patient.birthWeight + ' kg' : '--')}</td>
+      </tr>
+      <tr>
+        <td class="data-label">Pediatric Age</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${nicuData.raw.pediatricAge || calculatePediatricAgeShort(patient?.dateOfBirth) || '--'}</td>
+      </tr>
+      <tr>
+        <td class="data-label">Admission Type</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${nicuData.raw.admissionType || 'Emergency'}</td>
+      </tr>
+      <tr>
+        <td class="data-label">High Risk / Comorbidity</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${nicuData.raw.motherHighRisk || 'NO'}</td>
+      </tr>
+    ` : `
+      <tr>
+        <td class="data-label">Date of Birth</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${formatDate(patient?.dateOfBirth)}</td>
+      </tr>
+      <tr>
+        <td class="data-label">Gender</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${patient?.gender?.toUpperCase() || '--'}</td>
+      </tr>
+      <tr>
+        <td class="data-label">Time of Birth</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${formatTime(nicuData.raw.timeOfBirth)}</td>
+      </tr>
+      <tr>
+        <td class="data-label">Birth Weight</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${patient?.birthWeight ? patient.birthWeight + ' kg' : '--'}</td>
+      </tr>
+      <tr>
+        <td class="data-label">Gestation Age</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${nicuData.raw.gestationalAge || '--'}</td>
+      </tr>
+      <tr>
+        <td class="data-label">Mode Delivery</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${nicuData.raw.modeOfDelivery || '--'}</td>
+      </tr>
+      <tr>
+        <td class="data-label">High risk in mother</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${nicuData.raw.motherHighRisk || 'NO'}</td>
+      </tr>
+    `;
+
+    const section3HTML = isPicu ? `
+      <div class="section-title">3. PICU Clinical Metrics & Support</div>
+      <table class="data-table">
+        <tr>
+          <td class="data-label" style="width: 40%;">GCS Score</td>
+          <td class="data-colon" style="width: 15px;">:</td>
+          <td class="data-val" style="width: calc(60% - 15px);">${nicuData.raw.gcsScore ? nicuData.raw.gcsScore + ' / 15' : '--'}</td>
+        </tr>
+        <tr>
+          <td class="data-label" style="width: 40%;">Respiratory Support</td>
+          <td class="data-colon" style="width: 15px;">:</td>
+          <td class="data-val" style="width: calc(60% - 15px);">${nicuData.raw.respiratorySupport || 'None'}</td>
+        </tr>
+        <tr>
+          <td class="data-label" style="width: 40%;">Ventilator / PICU Stay</td>
+          <td class="data-colon" style="width: 15px;">:</td>
+          <td class="data-val" style="width: calc(60% - 15px);">${nicuData.raw.ventilatorDays ? nicuData.raw.ventilatorDays + ' days (Ventilator) / ' : ''}${nicuData.raw.picuStayDays ? nicuData.raw.picuStayDays + ' days (PICU)' : '--'}</td>
+        </tr>
+        <tr>
+          <td class="data-label" style="width: 40%;">Feeding Status</td>
+          <td class="data-colon" style="width: 15px;">:</td>
+          <td class="data-val" style="width: calc(60% - 15px);">${nicuData.raw.feedingType || 'Oral feed'}</td>
+        </tr>
+      </table>
+    ` : `
+      <div class="section-title">3. APGAR Details</div>
+      <table class="data-table">
+        <tr>
+          <td class="data-label" style="width: 40%;">APGAR Score</td>
+          <td class="data-colon" style="width: 15px;">:</td>
+          <td class="data-val" style="width: calc(60% - 15px);">${nicuData.raw.apgar1 || '--'} (1 Min) / ${nicuData.raw.apgar5 || '--'} (5 Min)</td>
+        </tr>
+      </table>
+    `;
+
     printWindow.document.write(`
       <html>
       <head>
@@ -1169,7 +2002,7 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
           body { font-family: 'Inter', sans-serif; background-color: #ffffff; color: #111827; padding: 10px; font-size: 11.5px; line-height: 1.5; }
           .container { max-width: 800px; margin: 0 auto; border: 1px solid #e5e7eb; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); height: auto; }
           .header { border-bottom: 2px double #2563eb; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-end; }
-          .header-left h1 { margin: 0; font-size: 20px; color: #2563eb; font-weight: 800; letter-spacing: -0.5px; }
+          .header-left h1 { margin: 0; font-size: 18px; color: #2563eb; font-weight: 800; letter-spacing: -0.5px; }
           .header-left p { margin: 2px 0 0 0; font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; }
           .header-right { text-align: right; }
           .header-right h2 { margin: 0; font-size: 14px; color: #1f2937; font-weight: 700; }
@@ -1220,8 +2053,8 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
         <div class="container">
           <div class="header">
             <div class="header-left">
-              <h1>NEONATAL DISCHARGE SUMMARY</h1>
-              <p>Department of Neonatology - ${patient?.clinicName || 'Clinic Record'}</p>
+              <h1>${headerTitle}</h1>
+              <p>${departmentName} - ${patient?.clinicName || 'Clinic Record'}</p>
             </div>
             <div class="header-right">
               <h2>UHID: ${patient?.uhid}</h2>
@@ -1229,12 +2062,12 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
             </div>
           </div>
           
-          <!-- Unified Side-by-Side Table for Header Information & Neonatal Details -->
+          <!-- Unified Side-by-Side Table for Header Information & Details -->
           <table style="width: 100%; border-collapse: collapse; border: 1px solid #9ca3af; margin-bottom: 12px; font-size: 11.5px;">
             <thead>
               <tr style="border-bottom: 1px solid #9ca3af;">
                 <th style="width: 50%; text-align: left; padding: 5px 10px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; background-color: #eff6ff; color: #2563eb; border-left: 3px solid #2563eb; letter-spacing: 0.5px; border-right: 1px solid #9ca3af;">1. HEADER INFORMATION</th>
-                <th style="width: 50%; text-align: left; padding: 5px 10px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; background-color: #eff6ff; color: #2563eb; border-left: 3px solid #2563eb; letter-spacing: 0.5px;">2. NEONATAL DETAILS</th>
+                <th style="width: 50%; text-align: left; padding: 5px 10px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; background-color: #eff6ff; color: #2563eb; border-left: 3px solid #2563eb; letter-spacing: 0.5px;">${col2Header}</th>
               </tr>
             </thead>
             <tbody>
@@ -1243,7 +2076,7 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
                 <td style="width: 50%; padding: 6px 10px; vertical-align: top; border-right: 1px solid #9ca3af;">
                   <table class="data-table" style="margin-bottom: 0;">
                     <tr>
-                      <td class="data-label">Baby IP No.</td>
+                      <td class="data-label">${ipLabel}</td>
                       <td class="data-colon">:</td>
                       <td class="data-val">${nicuData.raw.babyIpNo || '--'}</td>
                     </tr>
@@ -1285,64 +2118,23 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
                   </table>
                 </td>
                 
-                <!-- Right Column (Neonatal Details) -->
+                <!-- Right Column (Details) -->
                 <td style="width: 50%; padding: 6px 10px; vertical-align: top;">
                   <table class="data-table" style="margin-bottom: 0;">
-                    <tr>
-                      <td class="data-label">Date of Birth</td>
-                      <td class="data-colon">:</td>
-                      <td class="data-val">${formatDate(patient?.dateOfBirth)}</td>
-                    </tr>
-                    <tr>
-                      <td class="data-label">Gender</td>
-                      <td class="data-colon">:</td>
-                      <td class="data-val">${patient?.gender?.toUpperCase() || '--'}</td>
-                    </tr>
-                    <tr>
-                      <td class="data-label">Time of Birth</td>
-                      <td class="data-colon">:</td>
-                      <td class="data-val">${formatTime(nicuData.raw.timeOfBirth)}</td>
-                    </tr>
-                    <tr>
-                      <td class="data-label">Birth Weight</td>
-                      <td class="data-colon">:</td>
-                      <td class="data-val">${patient?.birthWeight ? patient.birthWeight + ' kg' : '--'}</td>
-                    </tr>
-                    <tr>
-                      <td class="data-label">Gestation Age</td>
-                      <td class="data-colon">:</td>
-                      <td class="data-val">${nicuData.raw.gestationalAge || '--'}</td>
-                    </tr>
-                    <tr>
-                      <td class="data-label">Mode Delivery</td>
-                      <td class="data-colon">:</td>
-                      <td class="data-val">${nicuData.raw.modeOfDelivery || '--'}</td>
-                    </tr>
-                    <tr>
-                      <td class="data-label">High risk in mother</td>
-                      <td class="data-colon">:</td>
-                      <td class="data-val">${nicuData.raw.motherHighRisk || 'NO'}</td>
-                    </tr>
+                    ${col2Rows}
                   </table>
                 </td>
               </tr>
             </tbody>
           </table>
           
-          <!-- APGAR score and Diagnosis (Side by Side) -->
+          <!-- Section 3 & Diagnosis (Side by Side) -->
           <div class="grid-2">
             <div>
-              <div class="section-title">3. APGAR Details</div>
-              <table class="data-table">
-                <tr>
-                  <td class="data-label" style="width: 40%;">APGAR Score</td>
-                  <td class="data-colon" style="width: 15px;">:</td>
-                  <td class="data-val" style="width: calc(60% - 15px);">${nicuData.raw.apgar1 || '--'} (1 Min) / ${nicuData.raw.apgar5 || '--'} (5 Min)</td>
-                </tr>
-              </table>
+              ${section3HTML}
             </div>
             <div>
-              <div class="section-title">4. Diagnosis</div>
+              <div class="section-title">4. Diagnosis / Complications</div>
               <div class="text-block">${fields.complications || 'None recorded.'}</div>
             </div>
           </div>
@@ -1440,6 +2232,7 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
             </div>
           </div>
 
+          ${!isPicu ? `
           <div class="section-title">14. Standard Discharge Guidelines & Advice <span class="odia-text" style="font-size: 10px; font-weight: 700;">(ଓଡ଼ିଆ)</span></div>
           <div class="text-block" style="color: #374151; padding-top: 2px;">
             <div class="odia-text" style="margin: 0; display: flex; flex-direction: column; gap: 3px;">
@@ -1449,7 +2242,7 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
               </div>
               <div style="display: flex; align-items: flex-start; line-height: 1.4;">
                 <span style="margin-right: 6px; font-size: 8px; margin-top: 3px;">•</span>
-                <span>କୋଲୋଷ୍ଟ୍ରମ୍ ତ୍ୟାଗ କରନ୍ତୁ ନାହିଁ ଏହି କ୍ଷୀର ପିଇବା ଦ୍ଵାରา ପୁଷ୍ଟି ମିଳିଥାଏ ଏବଂ ସଂକ୍ରମଣ ରୋକାଯାଏ।</span>
+                <span>କୋଲୋଷ୍ଟ୍ରମ୍ ତ୍ୟାଗ କରନ୍ତୁ ନାହିଁ ଏହି କ୍ଷୀର ପିଇବା ଦ୍ଵାରା ପୁଷ୍ଟି ମିଳିଥାଏ ଏବଂ ସଂକ୍ରମଣ ରୋକାଯାଏ।</span>
               </div>
               <div style="display: flex; align-items: flex-start; line-height: 1.4;">
                 <span style="margin-right: 6px; font-size: 8px; margin-top: 3px;">•</span>
@@ -1483,10 +2276,11 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
             </div>
             <span style="font-size: 9px; color: #111827; font-weight: bold; display: block; border-top: 1px dashed #fecaca; padding-top: 3px; margin-top: 3px;">★ IF ANY DANGER SIGN FOUND VISIT TO NEAREST HOSPITAL</span>
           </div>
+          ` : ''}
           
           <div class="footer">
             <div style="font-size: 8px; color: #9ca3af; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
-              Powered by ClinqoAI
+              Powered By ClinqoAI
             </div>
             <div class="signature-box">
               <img src="${drSignImg}" style="height: 50px; max-width: 200px; margin-bottom: 2px;" alt="Signature" />
@@ -1520,9 +2314,11 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
       <div className="flex justify-between items-center border-b border-border pb-3">
         <div>
           <h3 className="text-sm font-bold text-accent uppercase tracking-wider">
-            Neonatal Discharge Summary
+            {isPicu ? 'Pediatric Intensive Care (PICU) Discharge Summary' : 'Neonatal Discharge Summary'}
           </h3>
-          <p className="text-xs text-secondary mt-0.5 font-medium">Auto-compiled discharge summary from the patient's NICU record</p>
+          <p className="text-xs text-secondary mt-0.5 font-medium">
+            {isPicu ? "Auto-compiled discharge summary from the patient's PICU record" : "Auto-compiled discharge summary from the patient's NICU record"}
+          </p>
         </div>
         <div className="flex gap-2">
           {user?.role === 'doctor' && !isEditing && (
@@ -1764,8 +2560,9 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
               </h4>
               <div className="grid grid-cols-2 gap-3.5">
                 <div>
-                  <p className="text-[10px] font-bold text-secondary uppercase">DOB</p>
-                  <p className="text-sm font-bold text-primary mt-0.5">{dayjs(patient?.dateOfBirth).format('DD/MM/YYYY')}</p>
+                  <p className="text-[10px] font-bold text-secondary uppercase">AGE / DOB</p>
+                  <p className="text-sm font-bold text-primary mt-0.5">{calculateAgeYMD(patient?.dateOfBirth)}</p>
+                  <p className="text-xs text-secondary font-medium mt-0.5">DOB: {dayjs(patient?.dateOfBirth).format('DD/MM/YYYY')}</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-secondary uppercase">Gender</p>
@@ -2112,8 +2909,10 @@ const VaccinationCertificate = ({ patient, vaccinations, onVaccineClick }) => {
           <span className="font-bold" style={{ color: '#1e3a8a' }}>{patient?.uhid}</span>
         </div>
         <div className="flex justify-between border-b pb-1" style={{ borderBottomColor: '#e5e7eb' }}>
-          <span className="font-bold" style={{ color: '#6b7280' }}>Date of Birth:</span>
-          <span className="font-bold" style={{ color: '#374151' }}>{patient ? dayjs(patient.dateOfBirth).format('DD-MMM-YYYY') : ''}</span>
+          <span className="font-bold" style={{ color: '#6b7280' }}>Age / DOB:</span>
+          <span className="font-bold text-right" style={{ color: '#374151' }}>
+            {patient ? `${calculateAgeYMD(patient.dateOfBirth)} (${dayjs(patient.dateOfBirth).format('DD-MMM-YYYY')})` : ''}
+          </span>
         </div>
 
         <div className="flex justify-between border-b pb-1" style={{ borderBottomColor: '#e5e7eb' }}>
@@ -2661,68 +3460,330 @@ const PatientDetails = () => {
       console.error(error);
       toast.error('Failed to generate certificate PDF');
     }
-  };  // Generate printable card trigger
+  };
+
+  // Generate printable Rx card trigger
   const handlePrintCard = () => {
-    // Open a print window with card
     const printWindow = window.open('', '_blank');
+    
+    // Dynamic Clinic info resolution
+    const clinicObj = patient?.clinic || {};
+    const clinicName = clinicObj.name || patient?.clinicName || 'SAMAL CARE';
+    const clinicAddress = clinicObj.address 
+      ? `${clinicObj.address}${clinicObj.city ? ', ' + clinicObj.city : ''}`
+      : 'R6RG+HCG National Highway, Nuahata, Odisha 759128';
+    const clinicPhone = clinicObj.phone || '6371163857';
+
     printWindow.document.write(`
+      <!DOCTYPE html>
       <html>
       <head>
-        <title>Print Patient Card - ${patient?.uhid}</title>
+        <title>Print Rx - ${patient?.name || ''} (${patient?.uhid || ''})</title>
         <style>
-          body { font-family: 'Inter', sans-serif; background-color: #ffffff; color: #111827; padding: 40px; }
-          .card-box { border: 2px solid #0F766E; border-radius: 8px; padding: 24px; max-width: 450px; margin: 0 auto; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-          .card-header { border-bottom: 2px solid #0F766E; padding-bottom: 12px; margin-bottom: 16px; text-align: center; }
-          .card-header h2 { margin: 0; font-size: 20px; color: #0F766E; }
-          .card-header p { margin: 4px 0 0 0; font-size: 11px; color: #4B5563; text-transform: uppercase; font-weight: bold; }
-          .pc-row { display: flex; justify-content: space-between; font-size: 13px; margin: 8px 0; border-bottom: 1px dashed #E5E7EB; padding-bottom: 4px; }
-          .pc-label { font-weight: bold; color: #4B5563; }
-          .pc-val { font-weight: 600; color: #111827; }
-          .footer { text-align: center; font-size: 10px; color: #4B5563; margin-top: 20px; font-weight: 600; }
+          @page {
+            size: A4 portrait;
+            margin: 4mm 8mm;
+          }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          html, body {
+            width: 100%;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            color: #0f172a;
+            background: #ffffff;
+            overflow: hidden;
+          }
+          .rx-container {
+            border: 2px solid #0f766e;
+            border-radius: 8px;
+            padding: 8px 10px;
+            width: 100%;
+            height: 100vh;
+            max-height: 287mm;
+            margin: 0 auto;
+            background: #ffffff;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            page-break-inside: avoid;
+          }
+
+          /* 1. Header Box */
+          .header-box {
+            text-align: center;
+            border: 1.5px solid #0f766e;
+            border-radius: 6px;
+            padding: 5px 8px;
+            margin-bottom: 6px;
+            background-color: #ffffff;
+          }
+          .header-box h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 800;
+            color: #0f766e;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+          }
+          .header-box p.subtitle {
+            margin: 1px 0;
+            font-size: 10.5px;
+            font-weight: 600;
+            color: #475569;
+            font-style: italic;
+          }
+          .header-box p.subtext {
+            margin: 0;
+            font-size: 9px;
+            font-weight: 700;
+            color: #1e3a8a;
+          }
+
+          /* 2. Patient Information Card Box (Increased Height & Spacious Padding) */
+          .patient-card {
+            border: 1.5px solid #0f766e;
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            background-color: #f8fafc;
+          }
+          .card-header-title {
+            text-align: center;
+            font-size: 12px;
+            font-weight: 800;
+            color: #0f766e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px dashed #cbd5e1;
+            padding-bottom: 3px;
+            margin-bottom: 6px;
+          }
+          .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10.5px;
+          }
+          .info-table td {
+            padding: 3px 5px;
+            vertical-align: middle;
+          }
+          .label {
+            font-weight: 700;
+            color: #475569;
+            white-space: nowrap;
+          }
+          .val {
+            font-weight: 700;
+            color: #0f172a;
+            border-bottom: 1px dashed #cbd5e1;
+            padding-bottom: 1px;
+          }
+
+          /* 3. Main Dynamic Content Area (Stretches to touch upper footer line) */
+          .main-content-box {
+            border: 1.5px solid #0f766e;
+            border-radius: 6px;
+            display: flex;
+            flex: 1;
+            min-height: 175mm;
+            margin-bottom: 0;
+            background: #ffffff;
+          }
+          .complaints-col {
+            width: 32%;
+            border-right: 1.5px solid #0f766e;
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+          }
+          .rx-col {
+            width: 68%;
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+          }
+          .col-title {
+            font-size: 11.5px;
+            font-weight: 800;
+            color: #0f766e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px dashed #cbd5e1;
+            padding-bottom: 2px;
+            margin-bottom: 4px;
+            text-align: center;
+          }
+
+          /* 4. Footer Section (Increased Height & Spacious Layout) */
+          .footer-section {
+            margin-top: auto;
+            padding-top: 2px;
+          }
+          .footer-divider {
+            border-top: 1.5px solid #0f766e;
+            margin-top: 0;
+            margin-bottom: 8px;
+          }
+          .footer-grid {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            font-size: 11px;
+            padding: 4px 4px 6px 4px;
+            min-height: 42mm;
+          }
+          .left-footer {
+            max-width: 48%;
+          }
+          .clinic-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: #0f766e;
+            margin-bottom: 3px;
+            text-transform: uppercase;
+          }
+          .clinic-address {
+            color: #475569;
+            font-weight: 600;
+            line-height: 1.35;
+          }
+          .clinic-phone {
+            color: #0f172a;
+            font-weight: 700;
+            margin-top: 4px;
+          }
+
+          .right-footer {
+            text-align: right;
+            max-width: 48%;
+          }
+          .doc-name {
+            font-size: 13px;
+            font-weight: 800;
+            color: #0f172a;
+          }
+          .doc-qual {
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+            margin-top: 2px;
+          }
+          .doc-title {
+            font-size: 10.5px;
+            font-weight: 600;
+            color: #64748b;
+            margin-top: 2px;
+          }
+          .sign-area {
+            margin-top: 42px;
+            text-align: right;
+          }
+          .sign-line {
+            border-top: 1px dashed #475569;
+            width: 170px;
+            display: inline-block;
+          }
+          .sign-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #64748b;
+            margin-top: 3px;
+          }
         </style>
       </head>
       <body>
-        <div class="card-box">
-          <div class="card-header">
-            <h2>KIDDOSCARE</h2>
-            <p>Child Vaccination Card</p>
+        <div class="rx-container">
+          <div>
+            <!-- 1. Clinic Header Box -->
+            <div class="header-box">
+              <h1>KIDDOSCARE PEDIATRIC CLINIC</h1>
+              <p class="subtitle">Compassionate Care, Healthy Childhood</p>
+              <p class="subtext">Advanced Neonatal Care • Pediatric Care • Vaccination • Growth & Development</p>
+            </div>
+
+            <!-- 2. Patient Information Card Box -->
+            <div class="patient-card">
+              <div class="card-header-title">Patient Information Card</div>
+              <table class="info-table">
+                <tr>
+                  <td class="label" style="width: 16%;">Ref ID / UHID :</td>
+                  <td class="val" style="width: 34%; font-family: monospace;">${patient?.uhid || ''}</td>
+                  <td class="label" style="width: 16%;">Date of Birth :</td>
+                  <td class="val" style="width: 34%;">${calculateAgeYMD(patient?.dateOfBirth)} (${patient?.dateOfBirth ? dayjs(patient.dateOfBirth).format('DD-MMM-YYYY') : ''})</td>
+                </tr>
+                <tr>
+                  <td class="label">Beneficiary Name :</td>
+                  <td class="val">${patient?.namePrefix ? patient.namePrefix + ' ' : ''}${patient?.name || ''}</td>
+                  <td class="label">Gender :</td>
+                  <td class="val">${patient?.gender?.toUpperCase() || ''}</td>
+                </tr>
+                <tr>
+                  <td class="label">Mother Name :</td>
+                  <td class="val">${patient?.motherName || '--'}</td>
+                  <td class="label">Vaccination Date :</td>
+                  <td class="val">${dayjs().format('DD-MMM-YYYY')}</td>
+                </tr>
+                <tr>
+                  <td class="label">Vaccinated At :</td>
+                  <td class="val">${clinicName}</td>
+                  <td class="label">Clinic :</td>
+                  <td class="val">${clinicName}</td>
+                </tr>
+                <tr>
+                  <td class="label">Vaccinated By :</td>
+                  <td class="val">Dr. Subha Sandeep Mohanty</td>
+                  <td class="label">Doctor :</td>
+                  <td class="val">Dr. Subha Sandeep Mohanty</td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- 3. Main Dynamic Content Area (Blank area stretching just above footer line) -->
+            <div class="main-content-box">
+              <!-- Left Column: Chief Complaints -->
+              <div class="complaints-col">
+                <div class="col-title">Chief Complaints</div>
+              </div>
+
+              <!-- Right Column: Rx -->
+              <div class="rx-col">
+                <div class="col-title">Rx</div>
+              </div>
+            </div>
           </div>
-          <div class="pc-row">
-            <span class="pc-label">Patient Name:</span>
-            <span class="pc-val">${patient?.namePrefix} ${patient?.name}</span>
-          </div>
-          <div class="pc-row">
-            <span class="pc-label">UHID / ID:</span>
-            <span class="pc-val" style="font-family: monospace; font-weight: bold;">${patient?.uhid}</span>
-          </div>
-          <div class="pc-row">
-            <span class="pc-label">Gender:</span>
-            <span class="pc-val">${patient?.gender?.toUpperCase()}</span>
-          </div>
-          <div class="pc-row">
-            <span class="pc-label">Date of Birth:</span>
-            <span class="pc-val">${dayjs(patient?.dateOfBirth).format('DD MMM YYYY')}</span>
-          </div>
-          <div class="pc-row">
-            <span class="pc-label">Parent Name:</span>
-            <span class="pc-val">${patient?.parentName}</span>
-          </div>
-          <div class="pc-row">
-            <span class="pc-label">Mother Name:</span>
-            <span class="pc-val">${patient?.motherName || '--'}</span>
-          </div>
-          <div class="pc-row">
-            <span class="pc-label">Mobile Phone:</span>
-            <span class="pc-val">${patient?.mobile}</span>
-          </div>
-          <div class="pc-row">
-            <span class="pc-label">Associated Clinic:</span>
-            <span class="pc-val">${patient?.clinicName}</span>
-          </div>
-          <div class="footer">
-            KIDDOSCARE v1.0 • Please present this card on every visit.
+
+          <!-- 4. Footer Section -->
+          <div class="footer-section">
+            <div class="footer-divider"></div>
+            <div class="footer-grid">
+              <div class="left-footer">
+                <div class="clinic-title">${clinicName}</div>
+                <div class="clinic-address">${clinicAddress}</div>
+                <div class="clinic-phone">Phone : ${clinicPhone}</div>
+                <div style="font-size: 8px; color: #9ca3af; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px;">
+                  Powered By ClinqoAI
+                </div>
+              </div>
+
+              <div class="right-footer">
+                <div class="doc-name">Dr. Subha Sandeep Mohanty</div>
+                <div class="doc-qual">MBBS, MD (Paediatrics)</div>
+                <div class="doc-title">Consultant Pediatrician & Neonatologist</div>
+                <div class="sign-area">
+                  <div class="sign-line"></div>
+                  <div class="sign-label">Doctor's Signature</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+
         <script>
           window.onload = function() { window.print(); window.close(); }
         </script>
@@ -2783,7 +3844,7 @@ const PatientDetails = () => {
                 onClick={handlePrintCard}
                 className="h-9 px-3 bg-surface hover:bg-bg border border-border text-primary text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5"
               >
-                <Printer className="w-4 h-4" /> Print Card
+                <Printer className="w-4 h-4" /> Print Rx
               </button>
               <button
                 onClick={() => handleSendReminder()}
@@ -2840,7 +3901,7 @@ const PatientDetails = () => {
       </div>
       {/* Navigation Tabs */}
       <div className="flex border-b border-border bg-surface rounded-lg shadow-sm p-1.5 gap-2 overflow-x-auto whitespace-nowrap scrollbar-none">
-        {['overview', 'vaccinations', 'certificate', 'growth', 'reminders', ...(patient?.visitType === 'NICU' ? ['nicu', 'discharge'] : [])].map((tab) => (
+        {['overview', 'vaccinations', 'certificate', 'growth', 'reminders', ...(patient?.visitType === 'NICU' ? ['nicu', 'discharge'] : patient?.visitType === 'PICU' ? ['picu', 'discharge'] : [])].map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -2853,7 +3914,7 @@ const PatientDetails = () => {
                 : 'text-secondary hover:text-primary hover:bg-bg'
             }`}
           >
-            {tab}
+            {tab === 'nicu' ? 'NICU' : tab === 'picu' ? 'PICU' : tab}
           </button>
         ))}
       </div>
@@ -2875,9 +3936,12 @@ const PatientDetails = () => {
                 <p className="text-sm font-bold text-primary font-mono">{patient?.uhid}</p>
               </div>
               <div>
-                <p className="text-xs text-secondary font-semibold">Date of Birth</p>
-                <p className="text-sm font-bold text-primary">
-                  {dayjs(patient?.dateOfBirth).format('DD MMM YYYY')}
+                <p className="text-xs text-secondary font-semibold">AGE / DOB</p>
+                <p className="text-sm font-bold text-primary font-medium">
+                  {calculateAgeYMD(patient?.dateOfBirth)}
+                </p>
+                <p className="text-xs text-secondary font-medium mt-0.5">
+                  DOB: {dayjs(patient?.dateOfBirth).format('DD MMM YYYY')}
                 </p>
               </div>
               <div>
@@ -3269,7 +4333,11 @@ const PatientDetails = () => {
         <NicuPanel patient={patient} onUpdate={loadPatientData} API_URL={API_URL} />
       )}
 
-      {activeTab === 'discharge' && patient?.visitType === 'NICU' && (
+      {activeTab === 'picu' && patient?.visitType === 'PICU' && (
+        <PicuPanel patient={patient} onUpdate={loadPatientData} API_URL={API_URL} />
+      )}
+
+      {activeTab === 'discharge' && (patient?.visitType === 'NICU' || patient?.visitType === 'PICU') && (
         <DischargePanel patient={patient} onUpdate={loadPatientData} API_URL={API_URL} />
       )}
 
@@ -3426,6 +4494,7 @@ const PatientDetails = () => {
                     >
                       <option value="Normal OPD visit">Normal OPD visit</option>
                       <option value="NICU">NICU</option>
+                      <option value="PICU">PICU</option>
                       <option value="Follow up">Follow up</option>
                     </select>
                   </div>

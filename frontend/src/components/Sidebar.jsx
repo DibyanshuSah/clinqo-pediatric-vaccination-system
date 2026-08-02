@@ -84,7 +84,7 @@ const Sidebar = ({ isOpen, onClose }) => {
           Sign Out
         </button>
         <div className="mt-4 text-center">
-          <p className="text-xs font-semibold text-secondary">KIDDOSCARE v1.0</p>
+          <p className="text-xs font-semibold text-secondary">KIDDOSCARE v2.0</p>
         </div>
       </div>
     </aside>

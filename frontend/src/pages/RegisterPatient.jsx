@@ -294,6 +294,7 @@ const RegisterPatient = () => {
               >
                 <option value="Normal OPD visit">Normal OPD visit</option>
                 <option value="NICU">NICU</option>
+                <option value="PICU">PICU</option>
                 <option value="Follow up">Follow up</option>
               </select>
             </div>

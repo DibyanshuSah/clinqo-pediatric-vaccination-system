@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import { pdf } from '@react-pdf/renderer';
 import { VaccinationCertificatePDF } from '../components/VaccinationCertificatePDF';
 import { getVaccList } from '../utils/vaccineDefaults';
+import { calculateAgeYMD } from '../utils/ageCalculator';
 import uwinLogo from '../assets/uwin-logo.png';
 import govtLogo from '../assets/govt-logo.png';
 import nhmLogo from '../assets/nhm-logo.png';
@@ -203,8 +204,10 @@ const VaccinationCertificate = ({ patient, vaccinations, onVaccineClick }) => {
           <span className="font-bold" style={{ color: '#1e3a8a' }}>{patient?.uhid}</span>
         </div>
         <div className="flex justify-between border-b pb-1" style={{ borderBottomColor: '#e5e7eb' }}>
-          <span className="font-bold" style={{ color: '#6b7280' }}>Date of Birth:</span>
-          <span className="font-bold" style={{ color: '#374151' }}>{patient ? dayjs(patient.dateOfBirth).format('DD-MMM-YYYY') : ''}</span>
+          <span className="font-bold" style={{ color: '#6b7280' }}>Age / DOB:</span>
+          <span className="font-bold text-right" style={{ color: '#374151' }}>
+            {patient ? `${calculateAgeYMD(patient.dateOfBirth)} (${dayjs(patient.dateOfBirth).format('DD-MMM-YYYY')})` : ''}
+          </span>
         </div>
 
         <div className="flex justify-between border-b pb-1" style={{ borderBottomColor: '#e5e7eb' }}>

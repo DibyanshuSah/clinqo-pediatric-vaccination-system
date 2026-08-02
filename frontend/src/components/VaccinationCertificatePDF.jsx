@@ -534,6 +534,11 @@ export const VaccinationCertificatePDF = ({ patient, vaccinations }) => {
 
 
         </View>
+
+        {/* Powered by ClinqoAI Footer */}
+        <View style={{ borderTopWidth: 0.5, borderTopColor: '#e5e7eb', paddingTop: 4, marginTop: 6, alignItems: 'center' }} wrap={false}>
+          <Text style={{ fontSize: 7, color: '#9ca3af', fontWeight: 'bold', letterSpacing: 0.5, textTransform: 'uppercase' }}>Powered By ClinqoAI</Text>
+        </View>
       </Page>
     </Document>
   );

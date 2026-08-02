@@ -168,12 +168,13 @@ const scheduleVaccinationReminders = async (patient, vaccinations) => {
 
 /**
  * Schedule or update the Vaccination Completed Reminder
- * To run exactly 30 seconds after vaccination status is updated to COMPLETED (given).
- * If multiple vaccinations are completed within the 30-second window, they are grouped.
+ * To run exactly 1 hour after vaccination status is updated to COMPLETED (given).
+ * If multiple vaccinations are completed within the 1-hour window, they are grouped and sent at once.
  */
 const scheduleVaccinationCompletedReminder = async (patientId, vaccinationId) => {
   const now = new Date();
-  const scheduledAt = new Date(now.getTime() + 30 * 1000); // exactly 30 seconds later
+  const ONE_HOUR_MS = parseInt(process.env.WHATSAPP_COMPLETED_DELAY_MS) || (60 * 60 * 1000); // exactly 1 hour (3,600,000 ms)
+  const scheduledAt = new Date(now.getTime() + ONE_HOUR_MS);
   const templateName = process.env.WHATSAPP_TEMPLATE_COMPLETED || 'vaccination_successful_1';
 
   const patient = await prisma.patient.findUnique({
@@ -188,13 +189,7 @@ const scheduleVaccinationCompletedReminder = async (patientId, vaccinationId) =>
   });
   if (!vaccination) return;
 
-  // Retrieve all vaccines of that particular age group
-  const ageLabel = vaccination.vaccineMaster.ageLabel;
-  const sameAgeVaccines = await prisma.vaccineMaster.findMany({
-    where: { ageLabel },
-    orderBy: { displayOrder: 'asc' }
-  });
-  const vaccineName = sameAgeVaccines.map(vm => vm.vaccineName).join(', ');
+  const vaccineName = vaccination.vaccineMaster ? vaccination.vaccineMaster.vaccineName : 'Vaccine';
 
   const clinicPhone = patient.clinic ? patient.clinic.phone : '999XXXXXXXXXX';
   const clinicName = patient.clinic ? patient.clinic.name : 'KiddosCare Clinic';
@@ -205,26 +200,25 @@ const scheduleVaccinationCompletedReminder = async (patientId, vaccinationId) =>
   const doctor = await prisma.user.findFirst({ where: { role: 'doctor' } });
   const doctorName = doctor ? doctor.name : 'Dr. Shubha Sandeep Mahanty';
 
-  // Look for an existing scheduled 'administered' reminder for this patient in the next 45 seconds
+  // Look for an existing scheduled 'administered' reminder for this patient
   const existingReminder = await prisma.reminder.findFirst({
     where: {
       patientId,
       type: 'administered',
       status: 'scheduled',
       scheduledAt: {
-        gte: now,
-        lte: new Date(now.getTime() + 45 * 1000) // look slightly ahead to be safe
+        gte: now
       }
     }
   });
 
   if (existingReminder) {
-    // If it exists, group them! Parse the template params, consolidate unique vaccine names
+    // If it exists within the window, group them! Parse the template params, consolidate unique vaccine names
     try {
       const params = JSON.parse(existingReminder.templateParams);
       
-      const currentVaccines = params.vaccineName.split(', ').map(v => v.trim());
-      const newVaccines = vaccineName.split(', ').map(v => v.trim());
+      const currentVaccines = params.vaccineName ? params.vaccineName.split(', ').map(v => v.trim()).filter(Boolean) : [];
+      const newVaccines = vaccineName.split(', ').map(v => v.trim()).filter(Boolean);
       
       // Merge unique names
       const consolidatedList = Array.from(new Set([...currentVaccines, ...newVaccines])).join(', ');
@@ -240,12 +234,12 @@ const scheduleVaccinationCompletedReminder = async (patientId, vaccinationId) =>
           templateParams: JSON.stringify(params)
         }
       });
-      console.log(`[Scheduler] Grouped vaccines ${vaccineName} into existing scheduled reminder ID ${existingReminder.id}`);
+      console.log(`[Scheduler] Grouped vaccine (${vaccineName}) into existing scheduled 1-hr reminder ID ${existingReminder.id}`);
     } catch (err) {
       console.error('[Scheduler] Error grouping completed reminder params:', err);
     }
   } else {
-    // Create new scheduled completed reminder with the full age group list
+    // Create new scheduled completed reminder with 1-hour delay
     const templateParams = {
       parentName: patient.parentName,
       childName: patient.name,
@@ -272,7 +266,7 @@ const scheduleVaccinationCompletedReminder = async (patientId, vaccinationId) =>
         templateParams: JSON.stringify(templateParams)
       }
     });
-    console.log(`[Scheduler] Scheduled completed reminder for Patient ID ${patientId} vaccination ID ${vaccinationId} at ${scheduledAt.toISOString()}`);
+    console.log(`[Scheduler] Scheduled completed reminder for Patient ID ${patientId} vaccination ID ${vaccinationId} at ${scheduledAt.toISOString()} (1 hr window)`);
   }
 };
 

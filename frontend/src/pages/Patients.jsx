@@ -4,8 +4,11 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { Loader, SkeletonTable } from '../components/Loader';
 import EmptyState from '../components/EmptyState';
-import { Search, Plus, ChevronLeft, ChevronRight, ChevronRightSquare } from 'lucide-react';
+import { Search, Plus, ChevronLeft, ChevronRight, ChevronRightSquare, FileSpreadsheet } from 'lucide-react';
 import dayjs from 'dayjs';
+import { toast } from 'react-toastify';
+import { calculateAgeYMD } from '../utils/ageCalculator';
+import { exportPatientsToExcel } from '../utils/excelExporter';
 
 const Patients = () => {
   const { clinics, API_URL } = useAuth();
@@ -16,6 +19,7 @@ const Patients = () => {
   const [search, setSearch] = useState('');
   const [selectedClinic, setSelectedClinic] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   const navigate = useNavigate();
   const searchTimeoutRef = useRef(null);
@@ -78,21 +82,30 @@ const Patients = () => {
     };
   }, []);
 
-  // Helper to calculate current age in months/years
-  const calculateAge = (dobString) => {
-    const dob = dayjs(dobString);
-    const now = dayjs();
-    const diffMonths = now.diff(dob, 'month');
-    
-    if (diffMonths < 12) {
-      return `${diffMonths} Month${diffMonths !== 1 ? 's' : ''}`;
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
+      const clinicParam = selectedClinic !== 'all' ? `&clinicId=${selectedClinic}` : '';
+      
+      const res = await axios.get(
+        `${API_URL}/patients?all=true${searchParam}${clinicParam}`
+      );
+      
+      const allPatients = res.data.patients || [];
+      if (allPatients.length === 0) {
+        toast.info('No patient records found to export');
+        return;
+      }
+
+      exportPatientsToExcel(allPatients);
+      toast.success(`Exported ${allPatients.length} patient record(s) to Excel!`);
+    } catch (err) {
+      console.error('Error exporting patients to Excel:', err);
+      toast.error('Failed to export patients to Excel');
+    } finally {
+      setExporting(false);
     }
-    const diffYears = now.diff(dob, 'year');
-    const remainingMonths = diffMonths % 12;
-    if (remainingMonths === 0) {
-      return `${diffYears} Year${diffYears !== 1 ? 's' : ''}`;
-    }
-    return `${diffYears} Yr${diffYears !== 1 ? 's' : ''} ${remainingMonths} Mo${remainingMonths !== 1 ? 's' : ''}`;
   };
 
 
@@ -104,10 +117,20 @@ const Patients = () => {
           <h1 className="text-3xl font-bold tracking-tight text-primary">Patients</h1>
           <p className="text-sm text-secondary font-medium mt-1">Manage and register child patient profiles</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting}
+            style={{ backgroundColor: '#0C5F58' }}
+            className="h-10 px-4 hover:opacity-90 text-white text-sm font-bold rounded-lg transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
+            title="Export all registered patients to Excel"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            {exporting ? 'Exporting...' : 'Export to Excel'}
+          </button>
           <button
             onClick={() => navigate('/patients/register')}
-            className="h-10 px-4 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-lg transition-all flex items-center gap-2"
+            className="h-10 px-4 bg-accent hover:bg-accent-hover text-white text-sm font-bold rounded-lg transition-all flex items-center gap-2 shadow-sm cursor-pointer"
           >
             <Plus className="w-4 h-4" /> Register Patient
           </button>
@@ -192,7 +215,7 @@ const Patients = () => {
                     </td>
                     <td className="py-4 px-6 text-sm font-mono font-bold text-primary">{p.uhid}</td>
                     <td className="py-4 px-6">
-                      <div className="text-sm font-semibold text-primary">{calculateAge(p.dateOfBirth)}</div>
+                      <div className="text-sm font-semibold text-primary">{calculateAgeYMD(p.dateOfBirth)}</div>
                       <div className="text-xs text-secondary mt-0.5">
                         DOB: {dayjs(p.dateOfBirth).format('DD MMM YYYY')}
                       </div>

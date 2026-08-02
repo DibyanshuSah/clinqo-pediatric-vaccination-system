@@ -22,7 +22,8 @@ const generateUHID = async () => {
 };
 
 const getPatients = async (req, res) => {
-  const { search, clinicId, page = 1, limit = 10 } = req.query;
+  const { search, clinicId, page = 1, limit = 10, all } = req.query;
+  const isAll = all === 'true' || limit === 'all';
   const skip = (parseInt(page) - 1) * parseInt(limit);
   const take = parseInt(limit);
 
@@ -41,14 +42,19 @@ const getPatients = async (req, res) => {
       ];
     }
 
+    const queryOptions = {
+      where,
+      include: { clinic: true },
+      orderBy: { createdAt: 'desc' }
+    };
+
+    if (!isAll) {
+      queryOptions.skip = skip;
+      queryOptions.take = take;
+    }
+
     const [patients, total] = await prisma.$transaction([
-      prisma.patient.findMany({
-        where,
-        include: { clinic: true },
-        orderBy: { name: 'asc' },
-        skip,
-        take
-      }),
+      prisma.patient.findMany(queryOptions),
       prisma.patient.count({ where })
     ]);
 

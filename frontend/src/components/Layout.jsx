@@ -47,7 +47,7 @@ const Layout = () => {
           <Outlet />
         </main>
         <footer className="py-6 border-t border-border text-center text-xs font-semibold text-secondary">
-          KIDDOSCARE v1.0
+          KIDDOSCARE v2.0
         </footer>
       </div>
     );
