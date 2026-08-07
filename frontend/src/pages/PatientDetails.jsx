@@ -41,7 +41,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Send,
-  MessageCircle
+  MessageCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { Loader, SkeletonCard } from '../components/Loader';
 import EmptyState from '../components/EmptyState';
@@ -1883,6 +1884,11 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
 
     const col2Rows = isPicu ? `
       <tr>
+        <td class="data-label">Baby Name</td>
+        <td class="data-colon">:</td>
+        <td class="data-val">${patient?.namePrefix ? patient.namePrefix + ' ' : ''}${patient?.name || '--'}</td>
+      </tr>
+      <tr>
         <td class="data-label">Date of Birth</td>
         <td class="data-colon">:</td>
         <td class="data-val">${formatDate(patient?.dateOfBirth)}</td>
@@ -2226,7 +2232,7 @@ const DischargePanel = ({ patient, onUpdate, API_URL }) => {
             <div>
               <div class="section-title">13. Follow Up</div>
               <div class="text-block" style="font-weight: 600; font-size: 11px; line-height: 1.4; padding: 2px 0; color: #111827;">
-                • RW AFTER 7 DAYS (ADVISED 2D ECHO)<br/>
+                • REVIEW AFTER 7 DAYS<br/>
                 • REVIEW @ 1,3,6,12,24 MONTHS FOR NEURODEVELOPMENTAL ASSESSMENT
               </div>
             </div>
@@ -3724,22 +3730,16 @@ const PatientDetails = () => {
                   <td class="val">${patient?.gender?.toUpperCase() || ''}</td>
                 </tr>
                 <tr>
+                  <td class="label">Father Name :</td>
+                  <td class="val">${patient?.fatherName || patient?.parentName || '--'}</td>
                   <td class="label">Mother Name :</td>
                   <td class="val">${patient?.motherName || '--'}</td>
-                  <td class="label">Vaccination Date :</td>
-                  <td class="val">${dayjs().format('DD-MMM-YYYY')}</td>
                 </tr>
                 <tr>
-                  <td class="label">Vaccinated At :</td>
-                  <td class="val">${clinicName}</td>
                   <td class="label">Clinic :</td>
                   <td class="val">${clinicName}</td>
-                </tr>
-                <tr>
-                  <td class="label">Vaccinated By :</td>
-                  <td class="val">Dr. Subha Sandeep Mohanty</td>
-                  <td class="label">Doctor :</td>
-                  <td class="val">Dr. Subha Sandeep Mohanty</td>
+                  <td class="label">Contact Number :</td>
+                  <td class="val">${patient?.mobile || '--'}</td>
                 </tr>
               </table>
             </div>
@@ -3874,6 +3874,31 @@ const PatientDetails = () => {
           )}
         </div>
       </div>
+
+      {/* Overdue Alert Banner */}
+      {vaccinations.filter(v => v.status === 'not_given' && dayjs(v.dueDate).isBefore(dayjs(), 'day')).length > 0 && (
+        <div className="bg-red-50 border-2 border-red-500/80 text-red-700 px-5 py-4 rounded-xl shadow-md flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-red-600 text-white rounded-lg">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-sm font-extrabold text-red-700 uppercase tracking-wider flex items-center gap-2">
+                🚨 OVERDUE VACCINATION ALERT ({vaccinations.filter(v => v.status === 'not_given' && dayjs(v.dueDate).isBefore(dayjs(), 'day')).length} Vaccine{vaccinations.filter(v => v.status === 'not_given' && dayjs(v.dueDate).isBefore(dayjs(), 'day')).length > 1 ? 's' : ''} Missed)
+              </h4>
+              <p className="text-xs text-red-600 font-semibold mt-0.5">
+                Missed scheduled vaccination(s): {vaccinations.filter(v => v.status === 'not_given' && dayjs(v.dueDate).isBefore(dayjs(), 'day')).map(v => v.vaccineName).join(', ')}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveTab('vaccinations')}
+            className="h-9 px-4 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm cursor-pointer"
+          >
+            View Overdue Vaccines
+          </button>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -4102,18 +4127,27 @@ const PatientDetails = () => {
                             setIsEditVaccineOpen(true);
                           }}
                           className={`p-3 rounded-lg border-2 cursor-pointer bg-white transition-all shadow-sm hover:shadow-md flex flex-col justify-between ${
-                            v.category === 'optional'
-                              ? 'border-red-500 bg-red-50/20'
-                              : v.status === 'given'
-                                ? 'border-[#0F766E]'
-                                : 'border-[#E5E7EB] hover:border-gray-300'
+                            v.status === 'not_given' && dayjs(v.dueDate).isBefore(dayjs(), 'day')
+                              ? 'border-red-600 bg-red-50/50'
+                              : v.category === 'optional'
+                                ? 'border-red-500 bg-red-50/20'
+                                : v.status === 'given'
+                                  ? 'border-[#0F766E]'
+                                  : 'border-[#E5E7EB] hover:border-gray-300'
                           }`}
                         >
                           <div className="space-y-1">
-                            <h4 className="text-xs font-bold text-gray-800 break-words leading-tight">
-                              {v.vaccineName}
-                            </h4>
-                            <p className="text-[10px] text-gray-500 font-semibold">
+                            <div className="flex items-center justify-between gap-1">
+                              <h4 className="text-xs font-bold text-gray-800 break-words leading-tight">
+                                {v.vaccineName}
+                              </h4>
+                              {v.status === 'not_given' && dayjs(v.dueDate).isBefore(dayjs(), 'day') && (
+                                <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-red-600 text-white flex-shrink-0">
+                                  OVERDUE
+                                </span>
+                              )}
+                            </div>
+                            <p className={`text-[10px] font-semibold ${v.status === 'not_given' && dayjs(v.dueDate).isBefore(dayjs(), 'day') ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
                               Due: {dayjs(v.dueDate).format('DD MMM YYYY')}
                             </p>
                             {v.status === 'given' && v.dateGiven && (

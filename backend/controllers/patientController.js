@@ -42,9 +42,21 @@ const getPatients = async (req, res) => {
       ];
     }
 
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
     const queryOptions = {
       where,
-      include: { clinic: true },
+      include: {
+        clinic: true,
+        vaccinations: {
+          where: {
+            status: 'not_given',
+            dueDate: { lt: todayStart }
+          },
+          select: { id: true }
+        }
+      },
       orderBy: { createdAt: 'desc' }
     };
 
@@ -59,29 +71,34 @@ const getPatients = async (req, res) => {
     ]);
 
     // Format output
-    const formatted = patients.map(p => ({
-      id: p.id,
-      uhid: p.uhid,
-      namePrefix: p.namePrefix,
-      name: p.name,
-      dateOfBirth: p.dateOfBirth.toISOString().split('T')[0],
-      gender: p.gender,
-      parentName: p.parentName,
-      motherName: p.motherName,
-      mobile: p.mobile,
-      email: p.email,
-      address: p.address,
-      birthWeight: p.birthWeight,
-      currentWeight: p.currentWeight,
-      bloodGroup: p.bloodGroup,
-      photoUrl: p.photoUrl,
-      clinicId: p.clinicId,
-      clinicName: p.clinic.name,
-      clinic: p.clinic,
-      visitType: p.visitType,
-      nicuDetails: p.nicuDetails,
-      createdAt: p.createdAt
-    }));
+    const formatted = patients.map(p => {
+      const overdueCount = p.vaccinations ? p.vaccinations.length : 0;
+      return {
+        id: p.id,
+        uhid: p.uhid,
+        namePrefix: p.namePrefix,
+        name: p.name,
+        dateOfBirth: p.dateOfBirth.toISOString().split('T')[0],
+        gender: p.gender,
+        parentName: p.parentName,
+        motherName: p.motherName,
+        mobile: p.mobile,
+        email: p.email,
+        address: p.address,
+        birthWeight: p.birthWeight,
+        currentWeight: p.currentWeight,
+        bloodGroup: p.bloodGroup,
+        photoUrl: p.photoUrl,
+        clinicId: p.clinicId,
+        clinicName: p.clinic.name,
+        clinic: p.clinic,
+        visitType: p.visitType,
+        nicuDetails: p.nicuDetails,
+        createdAt: p.createdAt,
+        overdueCount,
+        hasOverdue: overdueCount > 0
+      };
+    });
 
     return res.json({
       patients: formatted,
@@ -99,14 +116,28 @@ const getPatients = async (req, res) => {
 const getPatient = async (req, res) => {
   const { id } = req.params;
   try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
     const patient = await prisma.patient.findUnique({
       where: { id: parseInt(id) },
-      include: { clinic: true }
+      include: {
+        clinic: true,
+        vaccinations: {
+          where: {
+            status: 'not_given',
+            dueDate: { lt: todayStart }
+          },
+          select: { id: true }
+        }
+      }
     });
     if (!patient) {
       return res.status(404).json({ error: 'Patient not found' });
     }
     
+    const overdueCount = patient.vaccinations ? patient.vaccinations.length : 0;
+
     return res.json({
       id: patient.id,
       uhid: patient.uhid,
@@ -128,7 +159,9 @@ const getPatient = async (req, res) => {
       clinic: patient.clinic,
       visitType: patient.visitType,
       nicuDetails: patient.nicuDetails,
-      createdAt: patient.createdAt
+      createdAt: patient.createdAt,
+      overdueCount,
+      hasOverdue: overdueCount > 0
     });
   } catch (err) {
     console.error(err);

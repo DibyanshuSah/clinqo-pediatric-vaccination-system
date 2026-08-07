@@ -113,6 +113,49 @@ const scheduleVaccinationReminders = async (patient, vaccinations) => {
       { days: 1, type: '1_day_before' }
     ];
 
+    // Check for overdue vaccination
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    if (dueDate < todayStart) {
+      const existingOverdue = await prisma.reminder.findFirst({
+        where: {
+          patientId: patient.id,
+          vaccinationId: v.id,
+          type: 'overdue'
+        }
+      });
+
+      if (!existingOverdue) {
+        const templateParams = {
+          parentName: patient.parentName,
+          childName: patient.name,
+          vaccineName,
+          dueDate: formatCustomDate(dueDate),
+          doctorName,
+          clinicName,
+          uniqueLink,
+          clinicPhone
+        };
+
+        const messagePreview = `🚨 OVERDUE Vaccination Alert: ${vaccineName} was due on ${formatCustomDate(dueDate)}`;
+
+        await prisma.reminder.create({
+          data: {
+            patientId: patient.id,
+            vaccinationId: v.id,
+            type: 'overdue',
+            channel: 'whatsapp',
+            status: 'scheduled',
+            scheduledAt: now,
+            message: messagePreview,
+            templateName,
+            templateParams: JSON.stringify(templateParams)
+          }
+        });
+      }
+    }
+
     for (const offset of reminderOffsets) {
       // Calculate scheduled date (offset days before due date)
       const scheduledAt = new Date(dueDate);
@@ -305,7 +348,7 @@ const runPendingReminders = async () => {
       try {
         // Validation check:
         // For vaccination reminders, do not send if the vaccination is completed or cancelled
-        if (['14_days_before', '7_days_before', '1_day_before', '3_days_before', 'due_today', 'upcoming'].includes(reminder.type) && reminder.vaccinationId) {
+        if (['14_days_before', '7_days_before', '1_day_before', '3_days_before', 'due_today', 'upcoming', 'overdue'].includes(reminder.type) && reminder.vaccinationId) {
           const vacc = await prisma.vaccination.findUnique({
             where: { id: reminder.vaccinationId }
           });
@@ -342,7 +385,7 @@ const runPendingReminders = async () => {
             bodyParameters.push({ type: 'text', text: params.registrationDate || '' });
             bodyParameters.push({ type: 'text', text: params.doctorName || '' });
             bodyParameters.push({ type: 'text', text: params.clinicPhone || '' });
-          } else if (['14_days_before', '7_days_before', '1_day_before', '3_days_before', 'due_today', 'upcoming'].includes(reminder.type)) {
+          } else if (['14_days_before', '7_days_before', '1_day_before', '3_days_before', 'due_today', 'upcoming', 'overdue'].includes(reminder.type)) {
             bodyParameters.push({ type: 'text', text: params.parentName || '' });
             bodyParameters.push({ type: 'text', text: params.childName || '' });
             bodyParameters.push({ type: 'text', text: params.vaccineName || '' });

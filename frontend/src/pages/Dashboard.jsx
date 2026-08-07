@@ -4,7 +4,7 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { Loader, SkeletonCard } from '../components/Loader';
 import EmptyState from '../components/EmptyState';
-import { Users, Calendar, CheckCircle, ArrowRight } from 'lucide-react';
+import { Users, Calendar, CheckCircle, ArrowRight, AlertTriangle } from 'lucide-react';
 import dayjs from 'dayjs';
 
 const Dashboard = () => {
@@ -73,7 +73,14 @@ const Dashboard = () => {
 
   const statsCards = [
     { title: 'Total Patients', value: stats?.totalPatients || 0, icon: Users, color: 'text-primary' },
-    { title: 'Due Today', value: stats?.vaccinesToday || 0, icon: Calendar, color: 'text-accent' },
+    { 
+      title: 'Overdue', 
+      value: stats?.overdueVaccines || 0, 
+      icon: AlertTriangle, 
+      color: 'text-red-600 border-red-200 bg-red-50',
+      badgeColor: 'bg-red-600 text-white',
+      onClick: () => navigate('/reminders?filter=overdue')
+    },
     { title: 'Due in 7 Days', value: stats?.upcomingVaccines || 0, icon: Calendar, color: 'text-secondary' },
     { title: 'Vaccinated This Month', value: stats?.vaccinatedThisMonth || 0, icon: CheckCircle, color: 'text-status-completed-text' }
   ];
@@ -131,12 +138,23 @@ const Dashboard = () => {
             {statsCards.map((card, idx) => {
               const Icon = card.icon;
               return (
-                <div key={idx} className="bg-surface border border-border p-6 rounded-lg shadow-sm flex items-center justify-between transition-transform hover:-translate-y-0.5">
+                <div 
+                  key={idx} 
+                  onClick={card.onClick}
+                  className={`bg-surface border border-border p-6 rounded-lg shadow-sm flex items-center justify-between transition-transform hover:-translate-y-0.5 ${card.onClick ? 'cursor-pointer hover:border-red-400 hover:shadow-md' : ''}`}
+                >
                   <div className="space-y-1.5">
-                    <p className="text-xs font-semibold text-secondary uppercase tracking-wider">{card.title}</p>
-                    <p className="text-3xl font-extrabold text-primary">{card.value}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-semibold text-secondary uppercase tracking-wider">{card.title}</p>
+                      {card.onClick && (
+                        <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                          Click to View
+                        </span>
+                      )}
+                    </div>
+                    <p className={`text-3xl font-extrabold ${card.title === 'Overdue' && (stats?.overdueVaccines || 0) > 0 ? 'text-red-600' : 'text-primary'}`}>{card.value}</p>
                   </div>
-                  <div className={`p-3 rounded-lg bg-bg border border-border ${card.color}`}>
+                  <div className={`p-3 rounded-lg border ${card.color}`}>
                     <Icon className="w-6 h-6" />
                   </div>
                 </div>

@@ -4,7 +4,7 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { Loader, SkeletonTable } from '../components/Loader';
 import EmptyState from '../components/EmptyState';
-import { Search, Plus, ChevronLeft, ChevronRight, ChevronRightSquare, FileSpreadsheet } from 'lucide-react';
+import { Search, Plus, ChevronLeft, ChevronRight, ChevronRightSquare, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import dayjs from 'dayjs';
 import { toast } from 'react-toastify';
 import { calculateAgeYMD } from '../utils/ageCalculator';
@@ -201,6 +201,11 @@ const Patients = () => {
                           <div className="font-bold text-primary flex items-center gap-2">
                             {p.namePrefix && <span className="text-xs font-semibold text-secondary">{p.namePrefix}</span>}
                             {p.name}
+                            {(p.hasOverdue || p.overdueCount > 0) && (
+                              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-red-600 text-white flex items-center gap-1 shadow-sm" title={`${p.overdueCount} vaccine(s) overdue`}>
+                                <AlertTriangle className="w-3 h-3" /> OVERDUE ({p.overdueCount})
+                              </span>
+                            )}
                           </div>
                           <div className="flex gap-2 mt-1">
                             <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-bg text-secondary border border-border">

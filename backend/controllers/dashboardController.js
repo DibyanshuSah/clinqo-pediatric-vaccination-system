@@ -53,8 +53,16 @@ const getDashboardStats = async (req, res) => {
       }
     });
 
-    // 4. Overdue Vaccines (completely removed overdue logic, return 0)
-    const overdueVaccines = 0;
+    // 4. Overdue Vaccines (not_given and due date in the past)
+    const overdueVaccines = await prisma.vaccination.count({
+      where: {
+        status: 'not_given',
+        dueDate: {
+          lt: todayStart
+        },
+        ...patientFilter
+      }
+    });
 
     // 5. Vaccinated This Month (given and given this month)
     const vaccinatedThisMonth = await prisma.vaccination.count({

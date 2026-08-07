@@ -25,13 +25,10 @@ const getDueReminders = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Find all not_given vaccinations due in the future
+    // Find all not_given vaccinations (both overdue and upcoming)
     const pendingVaccinations = await prisma.vaccination.findMany({
       where: {
-        status: 'not_given',
-        dueDate: {
-          gte: today
-        }
+        status: 'not_given'
       },
       include: {
         vaccineMaster: true,
@@ -80,13 +77,15 @@ const getDueReminders = async (req, res) => {
       let reminderType = null;
       let diffDays = Math.ceil((vDueDate - today) / (1000 * 60 * 60 * 24));
 
-      if (diffDays === 7) {
-        reminderType = '7_days_before';
-      } else if (diffDays === 3) {
-        reminderType = '3_days_before';
+      if (diffDays < 0) {
+        reminderType = 'overdue';
       } else if (diffDays === 0) {
         reminderType = 'due_today';
-      } else if (diffDays > 0 && diffDays < 7) {
+      } else if (diffDays === 3 || diffDays === 1) {
+        reminderType = '3_days_before';
+      } else if (diffDays === 7) {
+        reminderType = '7_days_before';
+      } else if (diffDays > 0 && diffDays <= 7) {
         reminderType = 'upcoming';
       }
 
@@ -121,7 +120,11 @@ const getDueReminders = async (req, res) => {
           clinicPhone
         };
 
-        const message = `🩺 *KIDDOSCARE Vaccination Reminder*\nDear ${patient.parentName},\n\nThis is a reminder from *${doctorName}* that ${patient.name} is scheduled for the following vaccination.\n\n💉 Vaccine: ${vaccineListStr}\n📅 Vaccination Date: ${formattedDueDate}\n🏥 Clinic: *${clinicName}*\n\nCertificate Link: ${uniqueLink}\n\nPlease visit the clinic on the scheduled date to keep your child's immunisation on track.\nFor appointments or assistance, contact us at ${clinicPhone}.\n\nThank you.\n– KIDDOSCARE`;
+        let message = `🩺 *KIDDOSCARE Vaccination Reminder*\nDear ${patient.parentName},\n\nThis is a reminder from *${doctorName}* that ${patient.name} is scheduled for the following vaccination.\n\n💉 Vaccine: ${vaccineListStr}\n📅 Vaccination Date: ${formattedDueDate}\n🏥 Clinic: *${clinicName}*\n\nCertificate Link: ${uniqueLink}\n\nPlease visit the clinic on the scheduled date to keep your child's immunisation on track.\nFor appointments or assistance, contact us at ${clinicPhone}.\n\nThank you.\n– KIDDOSCARE`;
+
+        if (reminderType === 'overdue') {
+          message = `🚨 *KIDDOSCARE Urgent Vaccination Overdue Alert*\nDear ${patient.parentName},\n\nThis is an URGENT reminder from *${doctorName}* that ${patient.name}'s vaccination is OVERDUE.\n\n💉 Vaccine: ${vaccineListStr}\n📅 Scheduled Due Date: ${formattedDueDate}\n🏥 Clinic: *${clinicName}*\n\nCertificate Link: ${uniqueLink}\n\nPlease visit the clinic immediately to keep your child's vaccination on track.\nFor appointments or assistance, contact us at ${clinicPhone}.\n\nThank you.\n– KIDDOSCARE`;
+        }
 
         if (!reminder) {
           // Create reminder record in the database, associate it with the first vaccination in the group
