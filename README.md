@@ -121,14 +121,6 @@ http://localhost:5173
 
 ---
 
-## 🌐 Live Application
-
-The application is deployed and accessible at:
-
-**[KiddosCare Live Demo](https://kiddoscare.in?utm_source=chatgpt.com)**
-
----
-
 ## 🔮 Future Enhancements
 
 * [ ] Role-based authentication
