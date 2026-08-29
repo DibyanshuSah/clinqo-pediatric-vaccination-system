@@ -120,27 +120,3 @@ http://localhost:5173
 * Responsive React-based interface
 
 ---
-
-## 🔮 Future Enhancements
-
-* [ ] Role-based authentication
-* [ ] Parent login portal
-* [ ] Digital vaccination certificates
-* [ ] Email notifications
-* [ ] Advanced analytics dashboard
-* [ ] Multi-clinic support
-* [ ] Enhanced reporting system
-
----
-
-## 👨‍💻 Developer
-
-**Dibyanshu Sah**
-B.Tech, Food Processing Engineering
-NIT Rourkela
-
----
-
-## 📄 License
-
-This project is developed for educational and professional purposes.
