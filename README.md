@@ -76,46 +76,18 @@ The platform provides a centralized system for maintaining patient records, mana
 
 ---
 
-## 📂 Project Structure
-
-```text
-KiddosCare/
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── services/
-│   │   ├── App.jsx
-│   │   └── main.jsx
-│   │
-│   └── package.json
-│
-├── backend/
-│   ├── controllers/
-│   ├── routes/
-│   ├── middleware/
-│   ├── config/
-│   ├── server.js
-│   └── package.json
-│
-└── README.md
-```
-
----
-
 ## 🚀 Getting Started
 
 ### 1. Clone the Repository
 
-```bash
+```bash id="g1i2q3"
 git clone <repository-url>
 cd KiddosCare
 ```
 
 ### 2. Setup Backend
 
-```bash
+```bash id="h4i5j6"
 cd backend
 npm install
 npm run dev
@@ -123,7 +95,7 @@ npm run dev
 
 ### 3. Setup Frontend
 
-```bash
+```bash id="k7l8m9"
 cd frontend
 npm install
 npm run dev
@@ -131,7 +103,7 @@ npm run dev
 
 The application will be available at:
 
-```text
+```text id="n0o1p2"
 http://localhost:5173
 ```
 
