@@ -157,10 +157,13 @@ const getUpcomingVaccines = async (req, res) => {
       vaccinationId: v.id,
       patientId: v.patientId,
       patientName: v.patient.name,
+      parentName: v.patient.parentName,
       uhid: v.patient.uhid,
+      uuid: v.patient.uuid || v.patient.uhid,
       vaccineName: v.vaccineMaster.vaccineName,
       dueDate: v.dueDate.toISOString().split('T')[0],
       status: v.status,
+      category: v.category || v.vaccineMaster?.category || 'mandatory',
       ageLabel: v.vaccineMaster.ageLabel,
       mobile: v.patient.mobile
     }));

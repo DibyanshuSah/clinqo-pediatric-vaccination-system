@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { Loader, SkeletonCard } from '../components/Loader';
 import EmptyState from '../components/EmptyState';
-import { Users, Calendar, CheckCircle, ArrowRight, AlertTriangle } from 'lucide-react';
+import { Users, Calendar, CheckCircle, ArrowRight, AlertTriangle, ExternalLink } from 'lucide-react';
 import dayjs from 'dayjs';
 
 const Dashboard = () => {
@@ -14,6 +14,7 @@ const Dashboard = () => {
   const [clinicStatsList, setClinicStatsList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingBreakdown, setLoadingBreakdown] = useState(false);
+  const [activeVaccineTab, setActiveVaccineTab] = useState('all'); // 'all' or 'optional'
   const navigate = useNavigate();
 
   // Load Dashboard stats & upcoming vaccines
@@ -84,6 +85,40 @@ const Dashboard = () => {
     { title: 'Due in 7 Days', value: stats?.upcomingVaccines || 0, icon: Calendar, color: 'text-secondary' },
     { title: 'Vaccinated This Month', value: stats?.vaccinatedThisMonth || 0, icon: CheckCircle, color: 'text-status-completed-text' }
   ];
+
+  // Tab counts
+  const allVaccinesCount = upcoming.length;
+  const optionalVaccinesCount = useMemo(() => {
+    return upcoming.filter((v) => v.category === 'optional').length;
+  }, [upcoming]);
+
+  // Filter upcoming vaccines based on active switching tab
+  const displayedUpcoming = useMemo(() => {
+    if (activeVaccineTab === 'optional') {
+      return upcoming.filter((v) => v.category === 'optional');
+    }
+    return upcoming;
+  }, [upcoming, activeVaccineTab]);
+
+  // Group displayed upcoming vaccines by patient
+  const groupedUpcoming = useMemo(() => {
+    const map = new Map();
+    displayedUpcoming.forEach((item) => {
+      if (!map.has(item.patientId)) {
+        map.set(item.patientId, {
+          patientId: item.patientId,
+          patientName: item.patientName,
+          parentName: item.parentName,
+          uhid: item.uhid,
+          uuid: item.uuid || item.uhid,
+          mobile: item.mobile,
+          vaccines: []
+        });
+      }
+      map.get(item.patientId).vaccines.push(item);
+    });
+    return Array.from(map.values());
+  }, [displayedUpcoming]);
 
   return (
     <div className="space-y-8">
@@ -252,13 +287,58 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Due in Next 7 Days Table */}
+          {/* Due in Next 7 Days Table with Two Switching Tabs */}
           <div className="bg-surface border border-border rounded-lg shadow-sm p-6">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <h3 className="text-base font-bold text-primary">Due in Next 7 Days</h3>
+
+              {/* Two Switching Tabs */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveVaccineTab('all')}
+                  className={`h-9 px-4 rounded-full text-xs font-semibold tracking-wide border transition-all flex items-center gap-1.5 ${
+                    activeVaccineTab === 'all'
+                      ? 'bg-accent text-white border-accent shadow-sm'
+                      : 'bg-surface text-secondary border-border hover:bg-bg'
+                  }`}
+                >
+                  <span>All Vaccines Due in Next 7 Days</span>
+                  <span
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      activeVaccineTab === 'all'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-bg text-secondary border border-border'
+                    }`}
+                  >
+                    {allVaccinesCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveVaccineTab('optional')}
+                  className={`h-9 px-4 rounded-full text-xs font-semibold tracking-wide border transition-all flex items-center gap-1.5 ${
+                    activeVaccineTab === 'optional'
+                      ? 'bg-accent text-white border-accent shadow-sm'
+                      : 'bg-surface text-secondary border-border hover:bg-bg'
+                  }`}
+                >
+                  <span>All Optional Vaccine Dues in Next 7 Days</span>
+                  <span
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      activeVaccineTab === 'optional'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-bg text-secondary border border-border'
+                    }`}
+                  >
+                    {optionalVaccinesCount}
+                  </span>
+                </button>
+              </div>
             </div>
 
-            {upcoming.length > 0 ? (
+            {groupedUpcoming.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -271,21 +351,34 @@ const Dashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {upcoming.map((row) => (
-                      <tr key={row.vaccinationId} className="hover:bg-bg/40 transition-colors">
-                        <td className="py-3.5 text-sm font-semibold text-primary">{row.patientName}</td>
-                        <td className="py-3.5 text-sm text-secondary font-mono">{row.uhid}</td>
-                        <td className="py-3.5 text-sm font-semibold text-accent">{row.vaccineName}</td>
-                        <td className="py-3.5 text-sm text-secondary">
-                          {dayjs(row.dueDate).format('DD MMM YYYY')}
+                    {groupedUpcoming.map((group) => (
+                      <tr key={group.patientId} className="hover:bg-bg/40 transition-colors">
+                        <td className="py-3.5 text-sm font-semibold text-primary">{group.patientName}</td>
+                        <td className="py-3.5 text-sm text-secondary font-mono">{group.uhid}</td>
+                        <td className="py-3.5 text-sm font-semibold text-accent">
+                          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                            {group.vaccines.map((v, idx) => (
+                              <span key={v.vaccinationId} className="whitespace-nowrap">
+                                {v.vaccineName}{idx < group.vaccines.length - 1 ? ',' : ''}
+                              </span>
+                            ))}
+                          </div>
                         </td>
-                        <td className="py-3.5 text-right">
-                          <button
-                            onClick={() => navigate(`/patients/${row.patientId}`)}
-                            className="h-8 px-3 bg-surface hover:bg-bg border border-border text-primary text-xs font-semibold rounded-lg transition-all inline-flex items-center gap-1"
+                        <td className="py-3.5 text-sm text-secondary whitespace-nowrap">
+                          {Array.from(new Set(group.vaccines.map((v) => v.dueDate)))
+                            .map((d) => dayjs(d).format('DD MMM YYYY'))
+                            .join(', ')}
+                        </td>
+                        <td className="py-3.5 text-right whitespace-nowrap">
+                          <a
+                            href={`/patients/${group.patientId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="h-8 px-3 bg-surface hover:bg-bg border border-border hover:border-accent text-primary hover:text-accent text-xs font-semibold rounded-lg transition-all inline-flex items-center gap-1.5"
                           >
-                            View Patient
-                          </button>
+                            <span>View Patient</span>
+                            <ExternalLink className="w-3.5 h-3.5 text-secondary" />
+                          </a>
                         </td>
                       </tr>
                     ))}
@@ -294,8 +387,16 @@ const Dashboard = () => {
               </div>
             ) : (
               <EmptyState
-                title="No vaccinations due soon"
-                description="There are no pending vaccinations scheduled in the next 7 days for this clinic selection."
+                title={
+                  activeVaccineTab === 'optional'
+                    ? "No optional vaccinations due soon"
+                    : "No vaccinations due soon"
+                }
+                description={
+                  activeVaccineTab === 'optional'
+                    ? "There are no pending optional vaccinations scheduled in the next 7 days for this clinic selection."
+                    : "There are no pending vaccinations scheduled in the next 7 days for this clinic selection."
+                }
               />
             )}
           </div>
